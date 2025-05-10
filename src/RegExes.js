@@ -28,8 +28,90 @@ function extractLanguage(filename) {
   // Create a regex pattern for all language codes (word boundaries for short codes)
   const langCodes = Object.keys(languageMap).sort((a, b) => b.length - a.length); // Sort by length for better matching
 
+  // Direct check for comma-separated language codes
+  const commaRegex = new RegExp(`(${langCodes.join("|")}),(${langCodes.join("|")})`, "i");
+  const commaMatch = filename.match(commaRegex);
+  if (commaMatch) {
+    const foundLanguages = new Set();
+    const parts = commaMatch[0].split(",");
+    for (const part of parts) {
+      const lang = part.trim().toUpperCase();
+      if (languageMap[lang]) {
+        foundLanguages.add(languageMap[lang]);
+      }
+    }
+    if (foundLanguages.size > 0) {
+      return Array.from(foundLanguages).sort().join("|");
+    }
+  }
+
+  // Direct check for multiple space-separated language codes (like "CZ SK EN")
+  const spaceRegex = new RegExp(`\\b(${langCodes.join("|")})\\s+(${langCodes.join("|")})(?:\\s+(${langCodes.join("|")}))?\\b`, "i");
+  const spaceMatch = filename.match(spaceRegex);
+  if (spaceMatch) {
+    const foundLanguages = new Set();
+    const parts = spaceMatch[0].split(/\s+/);
+    for (const part of parts) {
+      const lang = part.trim().toUpperCase();
+      if (languageMap[lang]) {
+        foundLanguages.add(languageMap[lang]);
+      }
+    }
+    if (foundLanguages.size > 0) {
+      return Array.from(foundLanguages).sort().join("|");
+    }
+  }
+
+  // First check for subtitle patterns - these take priority
+  const subtitleKeywords = ["tit", "titulky", "subs", "sub"];
+  const audioKeywords = ["audio", "dabing", "dub"];
+  const allKeywords = [...subtitleKeywords, ...audioKeywords];
+
+  const subtitlePattern = new RegExp(
+    `(?:${allKeywords.join("|")})[\\s_\\.]*(?:${langCodes.join("|")})|(?:${langCodes.join("|")})[\\s_\\.]*(?:${allKeywords.join("|")})`,
+    "i"
+  );
+
+  const subtitleMatch = filename.match(subtitlePattern);
+  if (subtitleMatch) {
+    // Extract all words from the match
+    const words = subtitleMatch[0].split(/[\s_\.]+/);
+    // Find the language code in the words
+    for (const word of words) {
+      const cleanWord = word.replace(/[^a-zA-Z]/g, "").toUpperCase();
+      if (languageMap[cleanWord]) {
+        // Check if it's an audio format
+        const isAudio = audioKeywords.some((keyword) => subtitleMatch[0].toLowerCase().includes(keyword));
+        return isAudio ? languageMap[cleanWord] : `${languageMap[cleanWord]} titulky`;
+      }
+    }
+  }
+
+  // Also check for concatenated format (e.g., CZSub, CZaudio)
+  const concatenatedPattern = new RegExp(`(?:${langCodes.join("|")})(?:${allKeywords.join("|")})`, "i");
+  const concatenatedMatch = filename.match(concatenatedPattern);
+  if (concatenatedMatch) {
+    const match = concatenatedMatch[0];
+    // Try to find the language code at the start
+    for (const code of langCodes) {
+      if (match.toUpperCase().startsWith(code)) {
+        // Check if it's an audio format
+        const isAudio = audioKeywords.some((keyword) => match.toLowerCase().includes(keyword));
+        return isAudio ? languageMap[code] : `${languageMap[code]} titulky`;
+      }
+    }
+  }
+
   // Common patterns for language markers in torrent filenames
   const patterns = [
+    // Match multiple languages at the end of filename (before extension)
+    new RegExp(
+      `(?:${langCodes.join("|")})(?:\\.(?:${langCodes.join(
+        "|"
+      )}))*(?=\\.(?:mkv|mp4|avi|mov|wmv|flv|webm|m4v|ts|mts|m2ts|vob|ogm|ogv|asf|rm|rmvb|3gp|3g2|f4v|f4p|f4a|f4b)$)`,
+      "i"
+    ),
+
     // Standalone language codes with delimiters
     new RegExp(`[\\[\\(\\.](?:${langCodes.join("|")})[\\.\\)\\]\\-\\_]`, "i"),
 
@@ -77,10 +159,10 @@ function extractLanguage(filename) {
   }
 
   // Direct check for common language patterns with separators
-  const directLanguagePattern = /(?:SK|CZ|EN)(?:\-|_)(?:SK|CZ|EN)(?:\-|_)?(?:SK|CZ|EN)?/i;
+  const directLanguagePattern = /(?:SK|CZ|EN)(?:\-|_|\.)(?:SK|CZ|EN)(?:\-|_|\.)?(?:SK|CZ|EN)?/i;
   const directMatch = filename.match(directLanguagePattern);
   if (directMatch) {
-    const langs = directMatch[0].split(/[\-_]/);
+    const langs = directMatch[0].split(/[\-_\.]/);
     for (const lang of langs) {
       if (languageMap[lang.toUpperCase()]) {
         foundLanguages.add(languageMap[lang.toUpperCase()]);

@@ -82,16 +82,21 @@ const webshare = {
           const queryTitleYear =
             showInfo.type === "movie" && item.parsedTitle.year && showInfo.year && !ptt.parse(queries[0]).year ? `${item.parsedTitle.year}` : "";
 
-          const title =
+          const cleanedTitle =
             item.parsedTitle.title
-              .replace(/subtitles/gi, "")
-              .replace(/titulky/gi, "")
-              .replace(/[^\p{L}\p{N}\s]/gu, " ") //remove special chars but keep accented letters like áíéř
-              .replace(/[_]/g, " ")
-              .trim() + titleYear;
-          const queryTitle = showInfo.type == "series" ? queries[0]?.split(" ").slice(0, -1).join(" ") : queries[0] + queryTitleYear;
-          const queryTitleSk = showInfo.type == "series" ? queries[1]?.split(" ").slice(0, -1).join(" ") : queries[1] + queryTitleYear;
-          const queryTitleOriginal = showInfo.type == "series" ? queries[2]?.split(" ").slice(0, -1).join(" ") : queries[2] + queryTitleYear;
+              ?.replace(/subtitles/gi, "")
+              ?.replace(/titulky/gi, "")
+              ?.replace(/[^\p{L}\p{N}\s]/gu, " ") //remove special chars but keep accented letters like áíéř
+              ?.replace(/[_]/g, " ")
+              ?.trim()
+              ?.toLowerCase() + titleYear;
+          const queryTitle = (showInfo.type == "series" ? queries[0]?.split(" ").slice(0, -1).join(" ") : queries[0] + queryTitleYear)?.toLowerCase();
+          const queryTitleSk = (
+            showInfo.type == "series" ? queries[1]?.split(" ").slice(0, -1).join(" ") : queries[1] + queryTitleYear
+          )?.toLowerCase();
+          const queryTitleOriginal = (
+            showInfo.type == "series" ? queries[2]?.split(" ").slice(0, -1).join(" ") : queries[2] + queryTitleYear
+          )?.toLowerCase();
 
           return {
             ident: item.ident,
@@ -103,11 +108,11 @@ const webshare = {
               `\n👍 ${item.posVotes} 👎 ${item.negVotes}` +
               `\n💾 ${filesize(item.size)}`,
             match: Math.max(
-              queryTitle ? stringSimilarity.compareTwoStrings(title, queryTitle) : 0,
-              queryTitleOriginal ? stringSimilarity.compareTwoStrings(title, queryTitleOriginal) : 0,
-              queryTitleSk ? stringSimilarity.compareTwoStrings(title, queryTitleSk) : 0,
-              queryTitleSk ? stringSimilarity.compareTwoStrings(title, queryTitleSk + "/" + queryTitleOriginal) : 0,
-              queryTitleSk ? stringSimilarity.compareTwoStrings(title, queryTitle + "/" + queryTitleOriginal) : 0
+              queryTitle ? stringSimilarity.compareTwoStrings(cleanedTitle, queryTitle) : 0,
+              queryTitleOriginal ? stringSimilarity.compareTwoStrings(cleanedTitle, queryTitleOriginal) : 0,
+              queryTitleSk ? stringSimilarity.compareTwoStrings(cleanedTitle, queryTitleSk) : 0,
+              queryTitleSk ? stringSimilarity.compareTwoStrings(cleanedTitle, queryTitleSk + "/" + queryTitleOriginal) : 0,
+              queryTitleSk ? stringSimilarity.compareTwoStrings(cleanedTitle, queryTitle + "/" + queryTitleOriginal) : 0
             ),
             SeasonEpisode: item.SeasonEpisode,
             posVotes: item.posVotes,
@@ -118,8 +123,8 @@ const webshare = {
               filename: item.name, //for subtitle addons
             },
 
-            // queries: [queryTitle, queryTitleOriginal, queryTitleSk],
-            // parsedTitle: item.parsedTitle,
+            queries: [queryTitle, queryTitleOriginal, queryTitleSk],
+            parsedTitle: cleanedTitle,
           };
         })
         // Filter out items with low match score, exclude TV episodes when searching for movies,
