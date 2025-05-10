@@ -48,6 +48,7 @@ const search = async (query, token) => {
     };
   });
 };
+
 const webshare = {
   login: async (user, password) => {
     console.log(`Logging in user ${user}`);
@@ -70,8 +71,16 @@ const webshare = {
   // we could also combine multiple different queries to get better results
   search: async (showInfo, token) => {
     const queries = getQueries(showInfo);
+    // Get all results from different queries
     let results = await Promise.all(queries.map((query) => search(query, token)));
-    results = results.flatMap((items) => items);
+
+    // Create a unique list by using an object to track items by their ident
+    results = Object.values(
+      results.flat().reduce((acc, item) => {
+        acc[item.ident] = item;
+        return acc;
+      }, {})
+    );
 
     return (
       results
