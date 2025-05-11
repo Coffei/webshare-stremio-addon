@@ -132,7 +132,7 @@ const webshare = {
               queryTitleOriginal ? stringSimilarity.compareTwoStrings(cleanedTitle, queryTitleOriginal) : 0,
               queryTitleSk ? stringSimilarity.compareTwoStrings(cleanedTitle, queryTitleSk) : 0,
               queryTitleSk ? stringSimilarity.compareTwoStrings(cleanedTitle, queryTitleSk + "/" + queryTitleOriginal) : 0,
-              queryTitleSk ? stringSimilarity.compareTwoStrings(cleanedTitle, queryTitle + "/" + queryTitleOriginal) : 0
+              queryTitle ? stringSimilarity.compareTwoStrings(cleanedTitle, queryTitle + "/" + queryTitleOriginal) : 0
             ),
             SeasonEpisode: item.SeasonEpisode,
             posVotes: item.posVotes,
