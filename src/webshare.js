@@ -98,14 +98,25 @@ const webshare = {
               ?.replace(/[^\p{L}\p{N}\s]/gu, " ") //remove special chars but keep accented letters like áíéř
               ?.replace(/[_]/g, " ")
               ?.trim()
-              ?.toLowerCase() + titleYear;
-          const queryTitle = (showInfo.type == "series" ? queries[0]?.split(" ").slice(0, -1).join(" ") : queries[0] + queryTitleYear)?.toLowerCase();
-          const queryTitleSk = (
-            showInfo.type == "series" ? queries[1]?.split(" ").slice(0, -1).join(" ") : queries[1] + queryTitleYear
-          )?.toLowerCase();
-          const queryTitleOriginal = (
-            showInfo.type == "series" ? queries[2]?.split(" ").slice(0, -1).join(" ") : queries[2] + queryTitleYear
-          )?.toLowerCase();
+              ?.toLowerCase()
+              .normalize("NFD") // "pelíšky" → "pelisky\u0301"
+              .replace(/[\u0300-\u036f]/g, "") + //"pelisky\u0301" → "pelisky"
+            titleYear;
+
+          const queryTitle = (showInfo.type == "series" ? queries[0]?.split(" ").slice(0, -1).join(" ") : queries[0] + queryTitleYear)
+            ?.toLowerCase()
+            .normalize("NFD") // "pelíšky" → "pelisky\u0301"
+            .replace(/[\u0300-\u036f]/g, ""); //"pelisky\u0301" → "pelisky"
+
+          const queryTitleSk = (showInfo.type == "series" ? queries[1]?.split(" ").slice(0, -1).join(" ") : queries[1] + queryTitleYear)
+            ?.toLowerCase()
+            .normalize("NFD") // "pelíšky" → "pelisky\u0301"
+            .replace(/[\u0300-\u036f]/g, ""); //"pelisky\u0301" → "pelisky"
+
+          const queryTitleOriginal = (showInfo.type == "series" ? queries[2]?.split(" ").slice(0, -1).join(" ") : queries[2] + queryTitleYear)
+            ?.toLowerCase()
+            .normalize("NFD") // "pelíšky" → "pelisky\u0301"
+            .replace(/[\u0300-\u036f]/g, ""); //"pelisky\u0301" → "pelisky"
 
           return {
             ident: item.ident,
@@ -155,6 +166,7 @@ const webshare = {
             return b.behaviorHints.videoSize - a.behaviorHints.videoSize;
           }
         })
+        .slice(0, 100)
     );
   },
 
