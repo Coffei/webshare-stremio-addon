@@ -5,7 +5,7 @@ const formencode = require("form-urlencoded");
 const { filesize } = require("filesize");
 const ptt = require("parse-torrent-title");
 const stringSimilarity = require("string-similarity");
-const { extractSeasonEpisode, extractLanguage } = require("./RegExes");
+const { extractSeasonEpisode, extractLanguage } = require("./filenameParser");
 
 const headers = { content_type: "application/x-www-form-urlencoded; charset=UTF-8", accept: "text/xml; charset=UTF-8" };
 
