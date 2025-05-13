@@ -7,6 +7,7 @@
 		"dev": "nodemon src/server.js --dev"
 	},
 	"dependencies": {
+		"express": "^5.1.0",
 		"filesize": "^10.1.0",
 		"form-urlencoded": "^6.1.4",
 		"freekeys": "^0.0.4",

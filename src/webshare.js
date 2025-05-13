@@ -5,6 +5,7 @@ const formencode = require("form-urlencoded");
 const { filesize } = require("filesize");
 const ptt = require("parse-torrent-title");
 const stringSimilarity = require("string-similarity");
+const host = process.argv.includes("--dev") == 1 ? "http://localhost:61613/" : "https://20317bf4c6c6-webshare-stremio-addon.baby-beamup.club/";
 const { extractSeasonEpisode, extractLanguage } = require("./filenameParser");
 
 const headers = { content_type: "application/x-www-form-urlencoded; charset=UTF-8", accept: "text/xml; charset=UTF-8" };
@@ -122,6 +123,7 @@ const webshare = {
             ident: item.ident,
             titleYear: titleYear,
             queryTitleYear: queryTitleYear,
+            url: host + "getUrl/" + item.ident + "?token=" + token,
             description:
               item.name +
               (item.language ? `\n🌐 ${item.language}` : "") +
@@ -170,21 +172,15 @@ const webshare = {
     );
   },
 
-  addUrlToStreams: (streams, token) => {
-    return Promise.all(
-      streams.map(async (stream) => {
-        const { ident, ...restStream } = stream;
-        const data = formencode({ ident, download_type: "video_stream", force_https: 1, wst: token });
-        const resp = await needle("post", "https://webshare.cz/api/file_link/", data, { headers });
-        const status = resp?.body?.children?.find((el) => el.name == "status")?.value;
-        if (status == "OK") {
-          const url = resp?.body?.children?.find((el) => el.name == "link")?.value;
-          return { ...restStream, url };
-        } else {
-          return restStream;
-        }
-      })
-    );
+  getUrl: async (ident, token) => {
+    const data = formencode({ ident, download_type: "video_stream", force_https: 1, wst: token });
+    const resp = await needle("post", "https://webshare.cz/api/file_link/", data, { headers });
+    const status = resp?.body?.children?.find((el) => el.name == "status")?.value;
+    if (status == "OK") {
+      return resp?.body?.children?.find((el) => el.name == "link")?.value; //url
+    } else {
+      return null;
+    }
   },
 };
 module.exports = webshare;
