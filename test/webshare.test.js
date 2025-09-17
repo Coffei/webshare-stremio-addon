@@ -223,11 +223,11 @@ describe("formatting description and name", () => {
     expect(results[0].description).toContain("💾 30 GB");
     expect(results[0].name).toBe("Webshare ✅ 2160p");
 
-    expect(results[1].description).toContain("👍 12 👎 0");
+    expect(results[1].description).toContain("👍 8 👎 0");
     expect(results[1].description).toContain(
-      "The.Relic.1999.1080p.WEB-DL.DD5.1.H264-FGT.mkv",
+      "The.Relic.1999.REMASTERED.1080p.BluRay.H264.AAC-RARBG.mp4",
     );
-    expect(results[1].description).toContain("💾 180 MB");
+    expect(results[1].description).toContain("💾 2.5 GB");
     expect(results[1].name).toBe("Webshare ✅ 1080p");
 
     expect(results[2].description).toContain("👍 10 👎 0");
@@ -237,19 +237,19 @@ describe("formatting description and name", () => {
     expect(results[2].description).toContain("💾 2 GB");
     expect(results[2].name).toBe("Webshare ✅ 1080p");
 
-    expect(results[3].description).toContain("👍 8 👎 0");
+    expect(results[3].description).toContain("👍 5 👎 0");
     expect(results[3].description).toContain(
-      "The.Relic.1999.REMASTERED.1080p.BluRay.H264.AAC-RARBG.mp4",
-    );
-    expect(results[3].description).toContain("💾 2.5 GB");
-    expect(results[3].name).toBe("Webshare ✅ 1080p");
-
-    expect(results[4].description).toContain("👍 5 👎 0");
-    expect(results[4].description).toContain(
       "The.Relic.1999.720p.BluRay.x264-[YTS.AG].mkv",
     );
-    expect(results[4].description).toContain("💾 1 GB");
-    expect(results[4].name).toBe("Webshare ✅ 720p");
+    expect(results[3].description).toContain("💾 1 GB");
+    expect(results[3].name).toBe("Webshare ✅ 720p");
+
+    expect(results[4].description).toContain("👍 12 👎 0");
+    expect(results[4].description).toContain(
+      "The.Relic.1999.1080p.WEB-DL.DD5.1.H264-FGT.mkv",
+    );
+    expect(results[4].description).toContain("💾 180 MB");
+    expect(results[4].name).toBe("Webshare ✅ 1080p");
   });
 
   test("handles common TV show filename patterns", async () => {
@@ -307,18 +307,18 @@ describe("formatting description and name", () => {
     expect(results[0].description).toContain("💾 30 GB");
     expect(results[0].name).toBe("Webshare ✅ 2160p");
 
-    expect(results[1].description).toContain("👍 10 👎 0");
+    expect(results[1].description).toContain("👍 8 👎 0");
     expect(results[1].description).toContain(
-      "Rolling.Rad.S01E01.1080p.BluRay.x264-[YTS.AG].mkv",
-    );
-    expect(results[1].description).toContain("💾 2 GB");
-    expect(results[1].name).toBe("Webshare ✅ 1080p");
-
-    expect(results[2].description).toContain("👍 8 👎 0");
-    expect(results[2].description).toContain(
       "Rolling.Rad.S01E01.REMASTERED.1080p.BluRay.H264.AAC-RARBG.mp4",
     );
-    expect(results[2].description).toContain("💾 2.5 GB");
+    expect(results[1].description).toContain("💾 2.5 GB");
+    expect(results[1].name).toBe("Webshare ✅ 1080p");
+
+    expect(results[2].description).toContain("👍 10 👎 0");
+    expect(results[2].description).toContain(
+      "Rolling.Rad.S01E01.1080p.BluRay.x264-[YTS.AG].mkv",
+    );
+    expect(results[2].description).toContain("💾 2 GB");
     expect(results[2].name).toBe("Webshare ✅ 1080p");
 
     expect(results[3].description).toContain("👍 5 👎 0");
@@ -388,5 +388,128 @@ describe("formatting description and name", () => {
     expect(results[2].description).toContain("🌐 CZ|EN");
     expect(results[3].description).toContain("🌐 CZ");
     expect(results[4].description).toContain("🌐 EN");
+  });
+});
+
+describe("custom resolution and fallback logic", () => {
+  test("detects custom resolution patterns in filename (Level 1)", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "Custom Movie",
+      type: "movie",
+      year: "2024",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          file("1", "Custom.Movie.432x240.low.quality.mp4", "50000000", "5", "0"),
+          file("2", "Custom.Movie.640x360.medium.mp4", "100000000", "3", "0"),
+          file("3", "Custom.Movie.854x480.high.mp4", "200000000", "8", "0"),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(3);
+    
+    // Check that custom resolutions are detected from filename (Level 1 priority)
+    expect(results.find(r => r.ident === "1").name).toContain("432x240");
+    expect(results.find(r => r.ident === "2").name).toContain("640x360");
+    expect(results.find(r => r.ident === "3").name).toContain("854x480");
+  });
+
+  test("uses API data when resolution not in filename (Level 2)", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "API Movie",
+      type: "movie",
+      year: "2024",
+    };
+
+    let requestCount = 0;
+    needle.mockImplementation((method, url, data, headers) => {
+      if (requestCount === 0) {
+        // First request - search results without resolution in filename
+        requestCount++;
+        return {
+          body: {
+            children: [
+              file("1", "API.Movie.no.resolution.mp4", "100000000", "5", "0"),
+            ],
+          },
+        };
+      } else {
+        // Subsequent requests - getById with API width/height data
+        return {
+          body: {
+            children: [
+              { name: "status", value: "OK" },
+              { name: "size", value: "100000000" },
+              { name: "name", value: "API.Movie.no.resolution.mp4" },
+              { name: "positive_votes", value: "5" },
+              { name: "negative_votes", value: "0" },
+              { name: "width", value: "1280" },
+              { name: "height", value: "720" },
+            ],
+          },
+        };
+      }
+    });
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    
+    // Should use API data as fallback (1280x720 should map to 720p)
+    expect(results[0].name).toContain("720p");
+  });
+
+  test("estimates resolution from file size when no other data (Level 3)", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "Size Movie",
+      type: "movie",
+      year: "2024",
+    };
+
+    let requestCount = 0;
+    needle.mockImplementation((method, url, data, headers) => {
+      if (requestCount === 0) {
+        // Search results without resolution in filename
+        requestCount++;
+        return {
+          body: {
+            children: [
+              file("1", "Size.Movie.unknown.mp4", "3100000000", "5", "0"), // ~3.1GB should be 1080p
+              file("2", "Size.Movie.small.mp4", "600000000", "3", "0"),    // ~600MB should be 480p
+            ],
+          },
+        };
+      } else {
+        // getById returns no width/height data (only required fields)
+        return {
+          body: {
+            children: [
+              { name: "status", value: "OK" },
+              { name: "size", value: data.ident === "1" ? "3100000000" : "600000000" },
+              { name: "name", value: data.ident === "1" ? "Size.Movie.unknown.mp4" : "Size.Movie.small.mp4" },
+              { name: "positive_votes", value: "5" },
+              { name: "negative_votes", value: "0" },
+              // No width/height data - should fall back to file size
+            ],
+          },
+        };
+      }
+    });
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(2);
+    
+    // Should estimate resolution from file size
+    expect(results.find(r => r.ident === "1").name).toContain("1080p"); // Large file
+    expect(results.find(r => r.ident === "2").name).toContain("480p");  // Small file
   });
 });
