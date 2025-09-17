@@ -6,13 +6,16 @@ const express = require("express");
 const path = require("path");
 const landingTemplate = require("./html/landingTemplate");
 const { host, url } = require("./env");
-const dev = process.argv.includes("--dev") == 1 ? "Dev" : "";
-
+const isDev = process.argv.includes("--dev");
+const dev = isDev ? "Dev" : "";
+// Determine manifest version value early (use timestamp in dev mode)
+const versionValue = isDev ? `${pkg.version}-dev-${Date.now()}` : pkg.version;
 // Docs: https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/api/responses/manifest.md
-types = ["movie", "series"];
+const types = ["movie", "series"];
+
 const manifest = {
   id: "community.coffei.webshare" + dev,
-  version: pkg.version,
+  version: versionValue,
   resources: [
     { name: "stream", types, idPrefixes: ["tt", "coffei.webshare:", "tmdb:"] },
     { name: "catalog", types, idPrefixes: ["coffei.webshare:"] },
