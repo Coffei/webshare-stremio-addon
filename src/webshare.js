@@ -20,6 +20,68 @@ const normalizeText = (text) =>
     .normalize("NFD") // "pelíšky" → "pelisky\u0301"
     .replace(/[\u0300-\u036f]/g, ""); // "pelisky\u0301" → "pelisky"
 
+  // Convert bitrate (in bits per second) into a recommended minimal download speed string
+  function formatRequiredSpeed(bitrate, safety = 1.2) {
+    if (!bitrate) return null;
+    // bitrate is in bits per second, convert to Mbps
+    const mbps = (Number(bitrate) / 1_000_000) * safety; // apply safety multiplier
+    // round to one decimal place
+    const rounded = Math.round(mbps * 10) / 10;
+    return `${rounded} Mbps`;
+  }
+
+  // Estimate minimum speed based on file size (fallback when bitrate not available)
+  function estimateSpeedFromSize(sizeBytes) {
+    // Rough estimate: assume typical compression ratio for different quality levels
+    // These are conservative estimates
+    if (sizeBytes > 8000000000) return "25 Mbps"; // 4K/very high quality
+    if (sizeBytes > 4000000000) return "15 Mbps"; // 1080p high quality
+    if (sizeBytes > 2000000000) return "10 Mbps"; // 1080p standard
+    if (sizeBytes > 1000000000) return "8 Mbps";  // 720p high quality
+    if (sizeBytes > 500000000) return "5 Mbps";   // 720p standard / 480p high
+    if (sizeBytes > 200000000) return "3 Mbps";   // 480p standard
+    return "2 Mbps"; // SD/low quality
+  }
+
+  // Determine resolution fallback with 3-level priority:
+  // 1. Filename patterns -> 2. API response data -> 3. File size estimation
+  function determineResolutionFallback(filename, sizeBytes, apiWidth = null, apiHeight = null) {
+    const name = filename.toLowerCase();
+    
+    // LEVEL 1: Check for common resolution indicators in filename (highest priority)
+    if (name.includes('2160p') || name.includes('4k') || name.includes('uhd')) return '2160p';
+    if (name.includes('1440p')) return '1440p';
+    if (name.includes('1080p') || name.includes('fhd')) return '1080p';
+    if (name.includes('720p') || name.includes('hd')) return '720p';
+    if (name.includes('480p')) return '480p';
+    if (name.includes('360p')) return '360p';
+    
+    // Check for custom resolution patterns like 432x240
+    const resolutionMatch = name.match(/(\d{3,4})x(\d{3,4})/);
+    if (resolutionMatch) {
+      return `${resolutionMatch[1]}x${resolutionMatch[2]}`;
+    }
+    
+    // LEVEL 2: Use API response data if available (medium priority)
+    if (apiWidth && apiHeight) {
+      if (apiHeight >= 2160) return '2160p';
+      if (apiHeight >= 1440) return '1440p';
+      if (apiHeight >= 1080) return '1080p';
+      if (apiHeight >= 720) return '720p';
+      if (apiHeight >= 480) return '480p';
+      if (apiHeight >= 360) return '360p';
+      // For custom resolutions from API
+      return `${apiWidth}x${apiHeight}`;
+    }
+    
+    // LEVEL 3: Fallback based on file size (lowest priority)
+    if (sizeBytes > 8000000000) return '2160p';
+    if (sizeBytes > 3000000000) return '1080p';
+    if (sizeBytes > 1500000000) return '720p';
+    if (sizeBytes > 500000000) return '480p';
+    return 'SD';
+  }
+
 const getQueries = (info) => {
   const names = Array.from(
     new Set(
@@ -101,12 +163,15 @@ const webshare = {
       headers,
     );
     if (
+      !resp || 
       resp.statusCode != 200 ||
-      resp.body.children.find((el) => el.name == "status").value != "OK"
+      !resp.body || 
+      !resp.body.children ||
+      resp.body.children.find((el) => el.name == "status")?.value != "OK"
     ) {
       throw Error("Cannot log in to Webshare.cz, invalid login credentials");
     }
-    return resp.body.children.find((el) => el.name == "token").value;
+    return resp.body.children.find((el) => el.name == "token")?.value;
   },
 
   directSearch: async (query, token) => {
@@ -114,7 +179,6 @@ const webshare = {
   },
 
   getById: async (id, token) => {
-    await needle("https://webshare.cz/api/file_info");
     const data = formencode({ ident: id, wst: token });
     const resp = await needle(
       "post",
@@ -122,15 +186,42 @@ const webshare = {
       data,
       { headers },
     );
+    
+    // Check if response is valid
+    if (!resp || !resp.body || !resp.body.children) {
+      console.log(`getById failed for ${id}: Invalid response structure`);
+      return null;
+    }
+    
     const children = resp.body.children;
 
-    const size = children.find((el) => el.name == "size").value;
-    const posVotes = children.find((el) => el.name == "positive_votes").value;
-    const negVotes = children.find((el) => el.name == "negative_votes").value;
-    const filename = children.find((el) => el.name == "name").value;
-    const desc = children.find((el) => el.name == "description").value;
+    // Check if status is OK
+    const status = children.find((el) => el.name == "status");
+    if (!status || status.value !== "OK") {
+      console.log(`getById failed for ${id}: Status not OK`);
+      return null;
+    }
+
+    const size = children.find((el) => el.name == "size")?.value;
+    const posVotes = children.find((el) => el.name == "positive_votes")?.value;
+    const negVotes = children.find((el) => el.name == "negative_votes")?.value;
+    const filename = children.find((el) => el.name == "name")?.value;
+    const desc = children.find((el) => el.name == "description")?.value;
     const password = children.find((el) => el.name == "password");
     const stripe = children.find((el) => el.name == "stripe")?.value;
+    // These fields may not be present in all files
+    const bitrate = children.find((el) => el.name == "bitrate")?.value;
+    const width = children.find((el) => el.name == "width")?.value;
+    const height = children.find((el) => el.name == "height")?.value;
+    //Leave for future use (some streams end up with "Playback error, please try again.")
+    //const fps = children.find((el) => el.name == "fps")?.value;
+    //const format = children.find((el) => el.name == "format")?.value;
+
+    // Safety check for required fields
+    if (!filename || !size) {
+      console.log(`getById failed for ${id}: Missing required fields`);
+      return null;
+    }
 
     const lang = extractLanguage(filename);
     const parsedTitle = ptt.parse(filename);
@@ -144,9 +235,9 @@ const webshare = {
     const description =
       filename +
       (lang ? `\n🌐 ${lang}` : "") +
-      `\n👍 ${posVotes} 👎 ${negVotes}` +
-      `\n💾 ${filesize(size)}` +
-      `\n${desc}`;
+      `\n👍 ${posVotes || 0} 👎 ${negVotes || 0}` +
+      `\n💾 ${filesize(parseInt(size) || 0)}` +
+      `\n${desc || ""}`;
 
     return {
       ident: id,
@@ -157,6 +248,12 @@ const webshare = {
       negVotes,
       stripe,
       size: parseInt(size, 10),
+      bitrate: bitrate ? parseInt(bitrate, 10) : null,
+      width: width ? parseInt(width, 10) : null,
+      height: height ? parseInt(height, 10) : null,
+      //Leave for future use (some streams end up with "Playback error, please try again.")
+      //fps: fps || null,
+      //format: format || null,
       language: lang,
       parsedTitle,
       SeasonEpisode: extractSeasonEpisode(name),
@@ -182,9 +279,8 @@ const webshare = {
       }, {}),
     );
 
-    return (
-      results
-        .map((item) => {
+    // Map basic items first
+    let mapped = results.map((item) => {
           //if there is parsed year of release for found stream, add it to comparison to have better sorting results
           const titleYear =
             showInfo.type === "movie" &&
@@ -266,11 +362,13 @@ const webshare = {
             titleYear: titleYear,
             queryTitleYear: queryTitleYear,
             url: url + "getUrl/" + item.ident + "?token=" + token,
-            description:
-              item.name +
-              (item.language ? `\n🌐 ${item.language}` : "") +
-              `\n👍 ${item.posVotes} 👎 ${item.negVotes}` +
-              `\n💾 ${filesize(item.size)}`,
+            description: (() => {
+              let desc = item.name + (item.language ? `\n🌐 ${item.language}` : "") +
+                `\n👍 ${item.posVotes} 👎 ${item.negVotes}` +
+                `\n💾 ${filesize(item.size)}`;
+              // (min-speed text removed) — keep bitrate available on the item for later enrichment/use
+              return desc;
+            })(),
             match: titleMatch,
             strongMatch,
             // round to the precision of 1 decimal point, for sorting purposes lower
@@ -278,9 +376,10 @@ const webshare = {
             // this allows other lower quality results, useful for titles where parse-torrent-title parses the title incorrectly
             weakMatch: nameMatch > 0.3,
             SeasonEpisode: item.SeasonEpisode,
-            posVotes: item.posVotes,
-            // add a check-mark if we get a strong match based on the parsed filename
-            name: `Webshare${strongMatch ? " ✅" : ""} ${item.parsedTitle.resolution || ""}`,
+            posVotes: parseInt(item.posVotes, 10) || 0,
+            fileSize: item.size, // keep original size for sorting
+            // add a check-mark if we get a strong match based on the parsed filename (name will be updated after enrichment)
+            name: `Webshare${strongMatch ? " ✅" : ""}`,
             behaviorHints: {
               bingeGroup:
                 "WebshareStremio|" +
@@ -289,14 +388,131 @@ const webshare = {
                 item.parsedTitle.resolution +
                 "|" +
                 item.parsedTitle.source, //secures quite reliable auto play next episode
+                                      //
               videoSize: item.size, //for subtitle addons
               filename: item.name, //for subtitle addons
             },
 
             queries: [queryTitle, queryTitleOriginal, queryTitleSk],
             parsedTitle: cleanedTitle,
+            // Initialize resolution using 3-level fallback: filename -> API -> file size
+            resolution: determineResolutionFallback(item.name, item.size, null, null),
           };
-        })
+        });
+
+    // Enrich ALL relevant items (strongMatch + weakMatch) with detailed info (getById) to fetch bitrate/width/height
+    try {
+      const relevantIndices = mapped
+        .map((m, idx) => ({ idx, ident: m.ident, relevant: m.strongMatch || m.weakMatch, strong: m.strongMatch, weak: m.weakMatch }))
+        .filter((x) => x.relevant)
+        .map((x) => ({ idx: x.idx, ident: x.ident }));
+
+      console.log(`Enriching ${relevantIndices.length} relevant items out of ${mapped.length} total mapped items`);
+
+      if (relevantIndices.length > 0) {
+        // Limit concurrent requests to avoid overwhelming the API
+        const chunkSize = 20;
+        const chunks = [];
+        for (let i = 0; i < relevantIndices.length; i += chunkSize) {
+          chunks.push(relevantIndices.slice(i, i + chunkSize));
+        }
+
+        let allDetails = [];
+        for (const chunk of chunks) {
+          const chunkDetails = await Promise.all(
+            chunk.map(async (c) => {
+              try {
+                return module.exports.getById ? await module.exports.getById(c.ident, token) : null;
+              } catch (err) {
+                console.log(`getById failed for ${c.ident}:`, err.message);
+                return null;
+              }
+            }),
+          );
+          allDetails = allDetails.concat(chunkDetails);
+        }
+
+        for (let i = 0; i < allDetails.length; i++) {
+          const d = allDetails[i];
+          const targetIdx = relevantIndices[i].idx;
+          if (d && mapped[targetIdx]) {
+            const target = mapped[targetIdx];
+            
+            // attach bitrate and dimensions for display/sorting
+            target.bitrate = d.bitrate || null;
+            target.width = d.width || null;
+            target.height = d.height || null;
+            
+            // Recalculate resolution using three-level fallback with API data
+            target.resolution = determineResolutionFallback(d.filename || target.description, target.fileSize, d.width, d.height);
+            
+            // Update name field to show correct resolution after enrichment
+            target.name = `Webshare${target.strongMatch ? " ✅" : ""} ${target.resolution || ""}`;
+            
+            // Ensure every file has min speed displayed (from bitrate or estimated from size)
+            let speedHint = null;
+            if (target.bitrate) {
+              speedHint = formatRequiredSpeed(target.bitrate);
+            } else {
+              speedHint = estimateSpeedFromSize(target.fileSize);
+            }
+            
+            if (speedHint && !target.description.includes('⚡')) {
+              target.description = target.description + `\n⚡ ${speedHint}`;
+            }
+          } else if (mapped[targetIdx]) {
+            // Handle case where getById failed but we still want to show fallbacks
+            const target = mapped[targetIdx];
+            
+            // Ensure every file has some resolution displayed
+            if (!target.resolution) {
+              target.resolution = determineResolutionFallback(target.description, target.fileSize, null, null);
+            }
+            
+            // Update name field
+            target.name = `Webshare${target.strongMatch ? " ✅" : ""} ${target.resolution || ""}`;
+            
+            // Add estimated speed hint
+            const speedHint = estimateSpeedFromSize(target.fileSize);
+            if (speedHint && !target.description.includes('⚡')) {
+              target.description = target.description + `\n⚡ ${speedHint}`;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log("Enrichment error:", e.message);
+      // ignore enrichment errors
+    }
+
+    // Apply fallback logic to ALL mapped items to ensure every file has resolution and speed
+    mapped.forEach(target => {
+      // Ensure every file has some resolution displayed
+      if (!target.resolution) {
+        const fallbackResolution = determineResolutionFallback(target.description, target.fileSize, target.width, target.height);
+        target.resolution = fallbackResolution;
+      }
+      
+      // Update name field to show correct resolution
+      target.name = `Webshare${target.strongMatch ? " ✅" : ""} ${target.resolution || ""}`;
+      
+      // Ensure every file has min speed displayed (if not already added)
+      if (!target.description.includes('⚡')) {
+        let speedHint = null;
+        if (target.bitrate) {
+          speedHint = formatRequiredSpeed(target.bitrate);
+        } else {
+          speedHint = estimateSpeedFromSize(target.fileSize);
+        }
+        
+        if (speedHint) {
+          target.description = target.description + `\n⚡ ${speedHint}`;
+        }
+      }
+    });
+
+    // Now continue with filtering/sorting using mapped items
+    const filteredItems = mapped
         // Filter out items with low match score, exclude TV episodes when searching for movies,
         // exclude protected files, and ensure series match the correct season/episode
         .filter(
@@ -314,41 +530,48 @@ const webshare = {
               (item.SeasonEpisode?.season != showInfo.series ||
                 item.SeasonEpisode?.episode != showInfo.episode)
             ), //if series, keep only streams with correct season and episode
-        )
+        );
+    
+    return filteredItems
         .sort((a, b) => {
           if (a.strongMatch && b.strongMatch) {
-            // Compare strong matches between themselves by match, positive votes and size. Do not
-            // use `fulltextMatch` since we know `match` should provide a better metric here. Using
-            // both `match` and `fulltextMatch` leads to the fact that other criteria are basically
-            // ignored.
             if (a.match != b.match) {
               return b.match - a.match;
+            } else if (a.fileSize != b.fileSize) {
+              // PRIORITY: Sort by file size FIRST (largest first)
+              return b.fileSize - a.fileSize;
             } else if (a.posVotes != b.posVotes) {
               return b.posVotes - a.posVotes;
+            } else if ((b.parsedTitle?.resolution || "") !== (a.parsedTitle?.resolution || "")) {
+              // as a last tiebreaker prefer items that have explicit resolution info
+              return (b.parsedTitle?.resolution ? 1 : 0) - (a.parsedTitle?.resolution ? 1 : 0);
             } else {
-              return b.behaviorHints.videoSize - a.behaviorHints.videoSize;
+              return 0;
             }
           } else if (!a.strongMatch && !b.strongMatch) {
-            // Compare weak matches between themselves by match, fulltextMatch, positive votes and
-            // size. Note that `match` is below the strong-threshold but still is the primary
-            // indicator of quality.
             if (a.match != b.match) {
               return b.match - a.match;
             } else if (a.fulltextMatch != b.fulltextMatch) {
               return b.fulltextMatch - a.fulltextMatch;
+            } else if (a.fileSize != b.fileSize) {
+              // PRIORITY: Sort weak matches by file size BEFORE votes (largest first)
+              return b.fileSize - a.fileSize;
             } else if (a.posVotes != b.posVotes) {
               return b.posVotes - a.posVotes;
             } else {
-              return b.behaviorHints.videoSize - a.behaviorHints.videoSize;
+              return 0;
             }
           } else {
-            // if one is strong and the other is not, we can just compare by `match` since it
-            // definitely won't be the same
-            return b.match - a.match;
+            // Mixed strong/weak match - prefer strong matches first, then by file size
+            if (a.strongMatch && !b.strongMatch) {
+              return -1;
+            } else if (!a.strongMatch && b.strongMatch) {
+              return 1;
+            }
+            return b.fileSize - a.fileSize;
           }
         })
-        .slice(0, 100)
-    );
+        .slice(0, 100);
   },
 
   getUrl: async (ident, token) => {
