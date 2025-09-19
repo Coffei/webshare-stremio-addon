@@ -1,9 +1,9 @@
 const pkg = require("../package.json");
 const { addonBuilder, getRouter } = require("stremio-addon-sdk");
-const webshare = require("./webshare");
-const { findShowInfo, findShowInfoInTmdb } = require("./meta");
 const express = require("express");
 const path = require("path");
+const webshare = require("./webshare");
+const { findShowInfo, findShowInfoInTmdb } = require("./meta");
 const landingTemplate = require("./html/landingTemplate");
 const { host, url } = require("./env");
 const isDev = process.argv.includes("--dev");
@@ -47,6 +47,14 @@ const manifest = {
       title: "Webshare.cz password",
       required: true,
     },
+    {
+      key: "sortMethod",
+      type: "select",
+      title: "Sort streams by",
+      options: ["votes", "filesize", "resolution"],
+      default: "votes",
+      required: false
+    },
   ],
   stremioAddonsConfig: {
     issuer: "https://stremio-addons.net",
@@ -70,12 +78,20 @@ const getToken = async (config) => {
 };
 
 builder.defineStreamHandler(async function (args) {
+  console.log(`🚨 STREAM HANDLER CALLED: ${args.type}/${args.id}`);
+  console.log(`🔧 DEBUG CONFIG: args.config =`, JSON.stringify(args.config || {}, null, 2));
+  console.log(`🔧 FULL ARGS:`, JSON.stringify(args, null, 2));
+  
   try {
+    
     if (args.id.startsWith("tt")) {
       const info = await findShowInfo(args.type, args.id);
       if (info) {
         const wsToken = await getToken(args.config || {});
-        const streams = await webshare.search(info, wsToken);
+        const sortMethod = (args.config || {}).sortMethod || "votes";
+        console.log(`🔍 CONFIG KEYS: ${Object.keys(args.config || {}).join(', ')}`);
+        console.log(`🎯 DEBUG: Raw sortMethod = "${(args.config || {}).sortMethod}" → Using = "${sortMethod}"`);
+        const streams = await webshare.search(info, wsToken, sortMethod);
 
         return { streams: streams };
       }
@@ -95,7 +111,9 @@ builder.defineStreamHandler(async function (args) {
       const info = await findShowInfoInTmdb(args.type, id);
       if (info) {
         const wsToken = await getToken(args.config || {});
-        const streams = await webshare.search(info, wsToken);
+        const sortMethod = (args.config || {}).sortMethod || "votes";
+        console.log(`🎯 DEBUG TMDB: Using sortMethod = "${sortMethod}"`);
+        const streams = await webshare.search(info, wsToken, sortMethod);
 
         return { streams: streams };
       }
@@ -171,17 +189,27 @@ builder.defineMetaHandler(async function (args) {
 const app = express();
 
 // Add the Stremio router for handling addon endpoints - getRouter converts it to express routers
+app.use((req, res, next) => {
+  console.log(`🌐 REQUEST: ${req.method} ${req.url}`);
+  next();
+});
 app.use(getRouter(builder.getInterface()));
 
 // Add middleware for CORS support
+// More comprehensive CORS headers for cross-origin requests
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control");
+  res.setHeader("Access-Control-Allow-Credentials", "false");
+  res.setHeader("Access-Control-Max-Age", "3600");
+  
+  // Handle preflight requests
   if (req.method === "OPTIONS") {
-    res.send();
-  } else {
-    next();
+    res.status(200).end();
+    return;
   }
+  next();
 });
 
 //!!! according to the docs, getRouter should provide landing page, but it doesn't for some reason, so I created a custom landing page routers
@@ -203,7 +231,7 @@ app.get(["/configure", "/"], (req, res) => {
 
 // Finish installation - salt the password and redirect to install/update the plugin
 app.post("/configure", async (req, res) => {
-  const { login, password } = req.body;
+  const { login, password, sortMethod } = req.body; // added sortMethod
   let salted;
   let token;
   try {
@@ -211,7 +239,12 @@ app.post("/configure", async (req, res) => {
     token = await webshare.login(login, salted);
   } catch (e) {}
   if (token) {
-    const config = { login, saltedPassword: salted };
+    // Include sortMethod in config object
+    const config = { 
+      login, 
+      saltedPassword: salted,
+      sortMethod: sortMethod || "votes" // fallback to default
+    };
     const url = `stremio://${host}/${encodeURIComponent(JSON.stringify(config))}/manifest.json`;
     res.redirect(url);
   } else {
