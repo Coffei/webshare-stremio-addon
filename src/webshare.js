@@ -82,6 +82,56 @@ const normalizeText = (text) =>
     return 'SD';
   }
 
+// Helper function to get resolution priority for sorting (higher number = better)
+function getResolutionPriority(resolution) {
+  if (!resolution) return 0;
+  const res = resolution.toLowerCase();
+  if (res.includes('2160p') || res.includes('4k')) return 10;
+  if (res.includes('1440p')) return 9;
+  if (res.includes('1080p')) return 8;
+  if (res.includes('720p')) return 7;
+  if (res.includes('480p')) return 6;
+  if (res.includes('360p')) return 5;
+  // Custom resolutions by height
+  const customMatch = res.match(/(\d+)x(\d+)/);
+  if (customMatch) {
+    const height = parseInt(customMatch[2]);
+    if (height >= 2160) return 10;
+    if (height >= 1440) return 9;
+    if (height >= 1080) return 8;
+    if (height >= 720) return 7;
+    if (height >= 480) return 6;
+    if (height >= 360) return 5;
+    return 4;
+  }
+    return 'SD';
+  }
+
+// Helper function to get resolution priority for sorting (higher number = better)
+function getResolutionPriority(resolution) {
+  if (!resolution) return 0;
+  const res = resolution.toLowerCase();
+  if (res.includes('2160p') || res.includes('4k')) return 10;
+  if (res.includes('1440p')) return 9;
+  if (res.includes('1080p')) return 8;
+  if (res.includes('720p')) return 7;
+  if (res.includes('480p')) return 6;
+  if (res.includes('360p')) return 5;
+  // Custom resolutions by height
+  const customMatch = res.match(/(\d+)x(\d+)/);
+  if (customMatch) {
+    const height = parseInt(customMatch[2]);
+    if (height >= 2160) return 10;
+    if (height >= 1440) return 9;
+    if (height >= 1080) return 8;
+    if (height >= 720) return 7;
+    if (height >= 480) return 6;
+    if (height >= 360) return 5;
+    return 4;
+  }
+  return 1; // SD or unknown
+}
+
 const getQueries = (info) => {
   const names = Array.from(
     new Set(
@@ -264,12 +314,27 @@ const webshare = {
   // improve movie query by adding year with movies
   // search localized names too
   // we could also combine multiple different queries to get better results
-  search: async (showInfo, token) => {
+  search: async (showInfo, token, sortMethod = "votes") => {
+    const searchStart = Date.now();
+    console.log(`⏱️ PERFORMANCE: Starting search for "${showInfo.name || showInfo.nameSk}" (${showInfo.type})`);
+    
     const queries = getQueries(showInfo);
-    // Get all results from different queries
-    let results = await Promise.all(
-      queries.map((query) => search(query, token)),
-    );
+    // Get all results from different queries - but do them sequentially to avoid ECONNRESET
+    let results = [];
+    for (let i = 0; i < queries.length; i++) {
+      try {
+        const queryResult = await search(queries[i], token);
+        results.push(queryResult);
+        
+        // Add small delay between queries to prevent API overload
+        if (i < queries.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay between queries
+        }
+      } catch (error) {
+        console.log(`Query failed for "${queries[i]}":`, error.message);
+        results.push([]); // Add empty array to maintain index consistency
+      }
+    }
 
     // Create a unique list by using an object to track items by their ident
     results = Object.values(
@@ -400,118 +465,26 @@ const webshare = {
           };
         });
 
-    // Enrich ALL relevant items (strongMatch + weakMatch) with detailed info (getById) to fetch bitrate/width/height
-    try {
-      const relevantIndices = mapped
-        .map((m, idx) => ({ idx, ident: m.ident, relevant: m.strongMatch || m.weakMatch, strong: m.strongMatch, weak: m.weakMatch }))
-        .filter((x) => x.relevant)
-        .map((x) => ({ idx: x.idx, ident: x.ident }));
-
-      console.log(`Enriching ${relevantIndices.length} relevant items out of ${mapped.length} total mapped items`);
-
-      if (relevantIndices.length > 0) {
-        // Limit concurrent requests to avoid overwhelming the API
-        const chunkSize = 20;
-        const chunks = [];
-        for (let i = 0; i < relevantIndices.length; i += chunkSize) {
-          chunks.push(relevantIndices.slice(i, i + chunkSize));
-        }
-
-        let allDetails = [];
-        for (const chunk of chunks) {
-          const chunkDetails = await Promise.all(
-            chunk.map(async (c) => {
-              try {
-                return module.exports.getById ? await module.exports.getById(c.ident, token) : null;
-              } catch (err) {
-                console.log(`getById failed for ${c.ident}:`, err.message);
-                return null;
-              }
-            }),
-          );
-          allDetails = allDetails.concat(chunkDetails);
-        }
-
-        for (let i = 0; i < allDetails.length; i++) {
-          const d = allDetails[i];
-          const targetIdx = relevantIndices[i].idx;
-          if (d && mapped[targetIdx]) {
-            const target = mapped[targetIdx];
-            
-            // attach bitrate and dimensions for display/sorting
-            target.bitrate = d.bitrate || null;
-            target.width = d.width || null;
-            target.height = d.height || null;
-            
-            // Recalculate resolution using three-level fallback with API data
-            target.resolution = determineResolutionFallback(d.filename || target.description, target.fileSize, d.width, d.height);
-            
-            // Update name field to show correct resolution after enrichment
-            target.name = `Webshare${target.strongMatch ? " ✅" : ""} ${target.resolution || ""}`;
-            
-            // Ensure every file has min speed displayed (from bitrate or estimated from size)
-            let speedHint = null;
-            if (target.bitrate) {
-              speedHint = formatRequiredSpeed(target.bitrate);
-            } else {
-              speedHint = estimateSpeedFromSize(target.fileSize);
-            }
-            
-            if (speedHint && !target.description.includes('⚡')) {
-              target.description = target.description + `\n⚡ ${speedHint}`;
-            }
-          } else if (mapped[targetIdx]) {
-            // Handle case where getById failed but we still want to show fallbacks
-            const target = mapped[targetIdx];
-            
-            // Ensure every file has some resolution displayed
-            if (!target.resolution) {
-              target.resolution = determineResolutionFallback(target.description, target.fileSize, null, null);
-            }
-            
-            // Update name field
-            target.name = `Webshare${target.strongMatch ? " ✅" : ""} ${target.resolution || ""}`;
-            
-            // Add estimated speed hint
-            const speedHint = estimateSpeedFromSize(target.fileSize);
-            if (speedHint && !target.description.includes('⚡')) {
-              target.description = target.description + `\n⚡ ${speedHint}`;
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.log("Enrichment error:", e.message);
-      // ignore enrichment errors
-    }
-
-    // Apply fallback logic to ALL mapped items to ensure every file has resolution and speed
+    // Apply basic fallback logic to ALL mapped items to ensure every file has resolution and speed (before filtering/sorting)
     mapped.forEach(target => {
-      // Ensure every file has some resolution displayed
+      // Ensure every file has some resolution displayed using basic fallback (filename + size only)
       if (!target.resolution) {
-        const fallbackResolution = determineResolutionFallback(target.description, target.fileSize, target.width, target.height);
-        target.resolution = fallbackResolution;
+        target.resolution = determineResolutionFallback(target.description, target.fileSize, null, null);
       }
       
-      // Update name field to show correct resolution
+      // Update name field to show basic resolution
       target.name = `Webshare${target.strongMatch ? " ✅" : ""} ${target.resolution || ""}`;
       
-      // Ensure every file has min speed displayed (if not already added)
+      // Add basic speed estimation from file size (no enrichment yet)
       if (!target.description.includes('⚡')) {
-        let speedHint = null;
-        if (target.bitrate) {
-          speedHint = formatRequiredSpeed(target.bitrate);
-        } else {
-          speedHint = estimateSpeedFromSize(target.fileSize);
-        }
-        
+        const speedHint = estimateSpeedFromSize(target.fileSize);
         if (speedHint) {
           target.description = target.description + `\n⚡ ${speedHint}`;
         }
       }
     });
 
-    // Now continue with filtering/sorting using mapped items
+
     const filteredItems = mapped
         // Filter out items with low match score, exclude TV episodes when searching for movies,
         // exclude protected files, and ensure series match the correct season/episode
@@ -530,48 +503,149 @@ const webshare = {
               (item.SeasonEpisode?.season != showInfo.series ||
                 item.SeasonEpisode?.episode != showInfo.episode)
             ), //if series, keep only streams with correct season and episode
-        );
-    
-    return filteredItems
+        )
         .sort((a, b) => {
-          if (a.strongMatch && b.strongMatch) {
-            if (a.match != b.match) {
-              return b.match - a.match;
-            } else if (a.fileSize != b.fileSize) {
-              // PRIORITY: Sort by file size FIRST (largest first)
-              return b.fileSize - a.fileSize;
-            } else if (a.posVotes != b.posVotes) {
-              return b.posVotes - a.posVotes;
-            } else if ((b.parsedTitle?.resolution || "") !== (a.parsedTitle?.resolution || "")) {
-              // as a last tiebreaker prefer items that have explicit resolution info
-              return (b.parsedTitle?.resolution ? 1 : 0) - (a.parsedTitle?.resolution ? 1 : 0);
-            } else {
-              return 0;
-            }
-          } else if (!a.strongMatch && !b.strongMatch) {
-            if (a.match != b.match) {
-              return b.match - a.match;
-            } else if (a.fulltextMatch != b.fulltextMatch) {
-              return b.fulltextMatch - a.fulltextMatch;
-            } else if (a.fileSize != b.fileSize) {
-              // PRIORITY: Sort weak matches by file size BEFORE votes (largest first)
-              return b.fileSize - a.fileSize;
-            } else if (a.posVotes != b.posVotes) {
-              return b.posVotes - a.posVotes;
-            } else {
-              return 0;
-            }
-          } else {
-            // Mixed strong/weak match - prefer strong matches first, then by file size
-            if (a.strongMatch && !b.strongMatch) {
-              return -1;
-            } else if (!a.strongMatch && b.strongMatch) {
-              return 1;
-            }
-            return b.fileSize - a.fileSize;
+          console.log(`🎯 SORTING: Using method "${sortMethod}"`);
+          
+          // FIRST: Always prefer strong matches over weak matches
+          if (a.strongMatch && !b.strongMatch) {
+            return -1;
+          } else if (!a.strongMatch && b.strongMatch) {
+            return 1;
           }
+          
+          // SECOND: Apply sorting method based on user preference
+          if (sortMethod === "filesize") {
+            // File size priority sorting
+            if (a.fileSize != b.fileSize) {
+              console.log(`📁 FILESIZE: ${a.ident}(${(a.fileSize/1024/1024/1024).toFixed(2)}GB) vs ${b.ident}(${(b.fileSize/1024/1024/1024).toFixed(2)}GB)`);
+              return b.fileSize - a.fileSize;
+            }
+            if (a.match != b.match) {
+              return b.match - a.match;
+            }
+            if (a.posVotes != b.posVotes) {
+              return b.posVotes - a.posVotes;
+            }
+          } else if (sortMethod === "votes") {
+            // Original Coffei implementation - match then votes priority
+            if (a.match != b.match) {
+              console.log(`🎯 VOTES-MATCH: ${a.ident}(${a.match.toFixed(3)}) vs ${b.ident}(${b.match.toFixed(3)})`);
+              return b.match - a.match;
+            }
+            if (a.posVotes != b.posVotes) {
+              console.log(`👍 VOTES: ${a.ident}(${a.posVotes}) vs ${b.ident}(${b.posVotes})`);
+              return b.posVotes - a.posVotes;
+            }
+            if (a.fileSize != b.fileSize) {
+              return b.fileSize - a.fileSize;
+            }
+          } else if (sortMethod === "resolution") {
+            // Resolution priority - highest resolution first
+            const aPriority = getResolutionPriority(a.resolution);
+            const bPriority = getResolutionPriority(b.resolution);
+            if (aPriority != bPriority) {
+              console.log(`🎬 RESOLUTION: ${a.ident}(${a.resolution}=${aPriority}) vs ${b.ident}(${b.resolution}=${bPriority})`);
+              return bPriority - aPriority;
+            }
+            if (a.match != b.match) {
+              return b.match - a.match;
+            }
+            if (a.fileSize != b.fileSize) {
+              return b.fileSize - a.fileSize;
+            }
+            if (a.posVotes != b.posVotes) {
+              return b.posVotes - a.posVotes;
+            }
+          }
+          
+          // FALLBACK: Use fulltext match for weak matches
+          if (!a.strongMatch && !b.strongMatch && a.fulltextMatch != b.fulltextMatch) {
+            return b.fulltextMatch - a.fulltextMatch;
+          }
+          
+          return 0;
         })
         .slice(0, 100);
+        
+    console.log(`⏱️ PERFORMANCE: After filtering/sorting, got ${filteredItems.length} streams, preparing for enrichment`);
+    
+    // NOW enrich only the TOP streams that will actually be shown to the user (dynamic amount)
+    const topStreamsToEnrich = filteredItems; // Enrich ALL filtered streams since they're the ones shown
+    console.log(`⏱️ PERFORMANCE: Enriching ALL ${topStreamsToEnrich.length} final streams (dynamic enrichment)`);
+    
+    try {
+      if (topStreamsToEnrich.length > 0) {
+        const enrichmentStart = Date.now();
+        
+        // Limit concurrent requests to avoid overwhelming the API
+        const chunkSize = 15; // Increase chunk size for better performance while maintaining stability
+        const chunks = [];
+        for (let i = 0; i < topStreamsToEnrich.length; i += chunkSize) {
+          chunks.push(topStreamsToEnrich.slice(i, i + chunkSize));
+        }
+
+        for (const chunk of chunks) {
+          console.log(`⏱️ Enriching chunk of ${chunk.length} TOP streams (chunk ${chunks.indexOf(chunk) + 1}/${chunks.length})`);
+          const chunkStart = Date.now();
+          
+          const chunkDetails = await Promise.all(
+            chunk.map(async (stream) => {
+              try {
+                const details = module.exports.getById ? await module.exports.getById(stream.ident, token) : null;
+                return { stream, details };
+              } catch (err) {
+                console.log(`getById failed for TOP stream ${stream.ident}:`, err.message);
+                return { stream, details: null };
+              }
+            }),
+          );
+          
+          // Apply enrichment to each stream in the chunk
+          chunkDetails.forEach(({ stream, details }) => {
+            if (details) {
+              // attach bitrate and dimensions for display/sorting
+              stream.bitrate = details.bitrate || null;
+              stream.width = details.width || null;
+              stream.height = details.height || null;
+              
+              // Recalculate resolution using three-level fallback with API data
+              stream.resolution = determineResolutionFallback(details.filename || stream.description, stream.fileSize, details.width, details.height);
+              
+              // Update name field to show correct resolution after enrichment
+              stream.name = `Webshare${stream.strongMatch ? " ✅" : ""} ${stream.resolution || ""}`;
+              
+              // Update speed hint with bitrate if available
+              if (stream.bitrate) {
+                const speedHint = formatRequiredSpeed(stream.bitrate);
+                if (speedHint) {
+                  // Replace existing speed estimate with bitrate-based one
+                  stream.description = stream.description.replace(/\n⚡ \d+(\.\d+)? Mbps/, `\n⚡ ${speedHint}`);
+                }
+              }
+            }
+          });
+          
+          console.log(`⏱️ TOP streams chunk completed in ${Date.now() - chunkStart}ms`);
+          
+          // Reduce delay between chunks for better performance
+          if (chunks.indexOf(chunk) < chunks.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 25)); // Reduced from 50ms to 25ms
+          }
+        }
+        
+        const enrichmentEnd = Date.now();
+        console.log(`⏱️ PERFORMANCE: TOP streams enrichment completed in ${enrichmentEnd - enrichmentStart}ms total`);
+      }
+    } catch (e) {
+      console.log("TOP streams enrichment error:", e.message);
+      // ignore enrichment errors
+    }
+        
+    const searchEnd = Date.now();
+    console.log(`⏱️ PERFORMANCE: Search completed in ${searchEnd - searchStart}ms total, returning ${filteredItems.length} streams`);
+    
+    return filteredItems;
   },
 
   getUrl: async (ident, token) => {
