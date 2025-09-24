@@ -33,6 +33,8 @@ const getQueries = (info) => {
       return [`${name} S${series}E${episode}`, `${name} ${series}x${episode}`];
     });
   } else {
+    // add queries with the release year appended, helps to find relevant files for movies with generic name like Mother (tt1216496) or Soul (tt2948372)
+    names.push(...names.map((name) => name + " " + info.year));
     return names;
   }
 };
