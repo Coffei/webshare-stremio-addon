@@ -56,3 +56,6 @@ pids
 .vscode/
 *.swp
 *.swo
+
+# Ignore all .md files (internal guidance)
+.github/*.md
