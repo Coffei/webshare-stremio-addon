@@ -172,9 +172,11 @@ const webshare = {
   search: async (showInfo, token) => {
     const queries = getQueries(showInfo);
     // Get all results from different queries
+    console.time("Executing all search queries");
     let results = await Promise.all(
       queries.map((query) => search(query, token)),
     );
+    console.timeEnd("Executing all search queries");
 
     // Create a unique list by using an object to track items by their ident
     results = Object.values(
