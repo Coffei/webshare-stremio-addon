@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1
+
+- Improve movie search by also including year in the search query.
+
 ## 0.7.0
 
 - Support locating streams for TMDB titles.
