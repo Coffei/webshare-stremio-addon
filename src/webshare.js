@@ -40,6 +40,176 @@ const getQueries = (info) => {
   }
 };
 
+const cleanTitle = (text) => {
+  return normalizeText(
+    text
+      ?.replace(/subtitles/gi, "")
+      ?.replace(/titulky/gi, "")
+      ?.replace(/[^\p{L}\p{N}\s]/gu, " ") //remove special chars but keep accented letters like áíéř
+      ?.replace(/[_]/g, " "),
+  );
+};
+
+const calculateMatchScores = (item, queries, showInfo) => {
+  //if there is parsed year of release for found stream, add it to comparison to have better sorting results
+  const titleYear =
+    showInfo.type === "movie" &&
+    item.parsedTitle.year &&
+    showInfo.year &&
+    !ptt.parse(queries[0]).year
+      ? `${showInfo.year}`
+      : ""; //if there is year in title, do not compare years e.g. Wonder Woman 1984 (2020)
+  const queryTitleYear =
+    showInfo.type === "movie" &&
+    item.parsedTitle.year &&
+    showInfo.year &&
+    !ptt.parse(queries[0]).year
+      ? `${item.parsedTitle.year}`
+      : "";
+
+  const cleanedTitle = cleanTitle(item.parsedTitle.title) + titleYear;
+  const cleanedName = cleanTitle(item.name);
+
+  const queryTitle = normalizeText(
+    showInfo.type == "series"
+      ? queries[0]?.split(" ").slice(0, -1).join(" ")
+      : queries[0] + queryTitleYear,
+  );
+
+  const queryTitleSk = normalizeText(
+    showInfo.type == "series"
+      ? queries[1]?.split(" ").slice(0, -1).join(" ")
+      : queries[1] + queryTitleYear,
+  );
+
+  const queryTitleOriginal = normalizeText(
+    showInfo.type == "series"
+      ? queries[2]?.split(" ").slice(0, -1).join(" ")
+      : queries[2] + queryTitleYear,
+  );
+
+  const matchQueries = [
+    queryTitle,
+    queryTitleOriginal,
+    queryTitleSk,
+    queryTitleSk &&
+      queryTitleOriginal &&
+      queryTitleSk + "/" + queryTitleOriginal,
+    queryTitle && queryTitleOriginal && queryTitle + "/" + queryTitleOriginal,
+  ].filter((q) => q);
+
+  const titleMatch = stringSimilarity.findBestMatch(cleanedTitle, matchQueries)
+    .bestMatch.rating;
+
+  const nameMatch = stringSimilarity.findBestMatch(cleanedName, matchQueries)
+    .bestMatch.rating;
+
+  return {
+    titleYear,
+    queryTitleYear,
+    cleanedTitle,
+    titleMatch,
+    nameMatch,
+    queries: [queryTitle, queryTitleOriginal, queryTitleSk],
+  };
+};
+
+const mapToStream = (item, matchScores, token) => {
+  // This threshold has best results, it filters out the most irrelevant streams.
+  const strongMatch = matchScores.titleMatch > 0.5;
+  // Round to the precision of 1 decimal point, creating buckets for sorting purposes. We don't want
+  // this artificial number to be the only factor in sorting, so we create buckets with items of
+  // similar match quality.
+  const fulltextMatch = Math.round(matchScores.nameMatch * 10) / 10;
+  // This allows other lower quality results, useful for titles where parse-torrent-title parses the
+  // title incorrectly.
+  const weakMatch = matchScores.nameMatch > 0.3;
+
+  return {
+    ident: item.ident,
+    titleYear: matchScores.titleYear,
+    queryTitleYear: matchScores.queryTitleYear,
+    url: url + "getUrl/" + item.ident + "?token=" + token,
+    description:
+      item.name +
+      (item.language ? `\n🌐 ${item.language}` : "") +
+      `\n👍 ${item.posVotes} 👎 ${item.negVotes}` +
+      `\n💾 ${filesize(item.size)}`,
+    match: matchScores.titleMatch,
+    strongMatch,
+    fulltextMatch,
+    weakMatch,
+    SeasonEpisode: item.SeasonEpisode,
+    posVotes: item.posVotes,
+    // Add a check-mark if we get a strong match based on the parsed filename.
+    name: `Webshare${strongMatch ? " ✅" : ""} ${item.parsedTitle.resolution || ""}`,
+    behaviorHints: {
+      bingeGroup:
+        "WebshareStremio|" +
+        item.language +
+        "|" +
+        item.parsedTitle.resolution +
+        "|" +
+        item.parsedTitle.source,
+      videoSize: item.size,
+      filename: item.name,
+    },
+    queries: matchScores.queries,
+    parsedTitle: matchScores.cleanedTitle,
+    protected: item.protected,
+  };
+};
+
+// Filter out items with low match score, exclude TV episodes when searching for movies, exclude
+// protected files, and ensure series match the correct season/episode.
+const shouldIncludeResult = (item, showInfo) => {
+  if (item.protected) return false;
+  if (!item.strongMatch && !item.weakMatch) return false;
+  if (item.queryTitleYear != item.titleYear) return false;
+
+  // Exclude TV episodes when searching for movies
+  if (
+    showInfo.type == "movie" &&
+    item.SeasonEpisode &&
+    !item.name.toLowerCase().includes("part")
+  ) {
+    return false;
+  }
+
+  // For series, keep only streams with correct season and episode
+  if (
+    showInfo.type == "series" &&
+    (item.SeasonEpisode?.season != showInfo.series ||
+      item.SeasonEpisode?.episode != showInfo.episode)
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const compareStreams = (a, b) => {
+  if (a.strongMatch && b.strongMatch) {
+    // Compare strong matches by match, positive votes and size. Do not use `fulltextMatch` since we
+    // know `match` should provide a better metric here. Using both `match` and `fulltextMatch`
+    // leads ot the fact that other criteria are basically ignored.
+    if (a.match != b.match) return b.match - a.match;
+    if (a.posVotes != b.posVotes) return b.posVotes - a.posVotes;
+    return b.behaviorHints.videoSize - a.behaviorHints.videoSize;
+  } else if (!a.strongMatch && !b.strongMatch) {
+    // Compare weak matches by match, fulltextMatch, positive votes and size. Note that `match`
+    // below is the strong-threshold but still is the primary indicator of quality.
+    if (a.match != b.match) return b.match - a.match;
+    if (a.fulltextMatch != b.fulltextMatch)
+      return b.fulltextMatch - a.fulltextMatch;
+    if (a.posVotes != b.posVotes) return b.posVotes - a.posVotes;
+    return b.behaviorHints.videoSize - a.behaviorHints.videoSize;
+  } else {
+    // One is strong and the other is not, compare by match since they definitely won't be the same.
+    return b.match - a.match;
+  }
+};
+
 const search = async (query, token) => {
   console.log("Searching", query);
   const data = formencode({
@@ -172,6 +342,7 @@ const webshare = {
   // we could also combine multiple different queries to get better results
   search: async (showInfo, token) => {
     const queries = getQueries(showInfo);
+
     // Get all results from different queries
     const searchStartMs = performance.now();
     let results = await Promise.all(
@@ -180,7 +351,7 @@ const webshare = {
     const searchDurationMs = Math.round(performance.now() - searchStartMs);
     console.log(`Executing all search queries: ${searchDurationMs}ms`);
 
-    // Create a unique list by using an object to track items by their ident
+    // Deduplicate results by ident
     results = Object.values(
       results.flat().reduce((acc, item) => {
         acc[item.ident] = item;
@@ -188,173 +359,14 @@ const webshare = {
       }, {}),
     );
 
-    return (
-      results
-        .map((item) => {
-          //if there is parsed year of release for found stream, add it to comparison to have better sorting results
-          const titleYear =
-            showInfo.type === "movie" &&
-            item.parsedTitle.year &&
-            showInfo.year &&
-            !ptt.parse(queries[0]).year
-              ? `${showInfo.year}`
-              : ""; //if there is year in title, do not compare years e.g. Wonder Woman 1984 (2020)
-          const queryTitleYear =
-            showInfo.type === "movie" &&
-            item.parsedTitle.year &&
-            showInfo.year &&
-            !ptt.parse(queries[0]).year
-              ? `${item.parsedTitle.year}`
-              : "";
-
-          const cleanedTitle =
-            normalizeText(
-              item.parsedTitle.title
-                ?.replace(/subtitles/gi, "")
-                ?.replace(/titulky/gi, "")
-                ?.replace(/[^\p{L}\p{N}\s]/gu, " ") //remove special chars but keep accented letters like áíéř
-                ?.replace(/[_]/g, " "),
-            ) + titleYear;
-
-          const cleanedName = normalizeText(
-            item.name
-              ?.replace(/subtitles/gi, "")
-              ?.replace(/titulky/gi, "")
-              ?.replace(/[^\p{L}\p{N}\s]/gu, " ") //remove special chars but keep accented letters like áíéř
-              ?.replace(/[_]/g, " "),
-          );
-
-          const queryTitle = normalizeText(
-            showInfo.type == "series"
-              ? queries[0]?.split(" ").slice(0, -1).join(" ")
-              : queries[0] + queryTitleYear,
-          );
-
-          const queryTitleSk = normalizeText(
-            showInfo.type == "series"
-              ? queries[1]?.split(" ").slice(0, -1).join(" ")
-              : queries[1] + queryTitleYear,
-          );
-
-          const queryTitleOriginal = normalizeText(
-            showInfo.type == "series"
-              ? queries[2]?.split(" ").slice(0, -1).join(" ")
-              : queries[2] + queryTitleYear,
-          );
-
-          const matchQueries = [
-            queryTitle,
-            queryTitleOriginal,
-            queryTitleSk,
-            queryTitleSk &&
-              queryTitleOriginal &&
-              queryTitleSk + "/" + queryTitleOriginal,
-            queryTitle &&
-              queryTitleOriginal &&
-              queryTitle + "/" + queryTitleOriginal,
-          ].filter((q) => q);
-
-          const titleMatch = stringSimilarity.findBestMatch(
-            cleanedTitle,
-            matchQueries,
-          ).bestMatch.rating;
-
-          const nameMatch = stringSimilarity.findBestMatch(
-            cleanedName,
-            matchQueries,
-          ).bestMatch.rating;
-
-          // this threshold has best results, it filters out the most irrelevant streams
-          const strongMatch = titleMatch > 0.5;
-
-          return {
-            ident: item.ident,
-            titleYear: titleYear,
-            queryTitleYear: queryTitleYear,
-            url: url + "getUrl/" + item.ident + "?token=" + token,
-            description:
-              item.name +
-              (item.language ? `\n🌐 ${item.language}` : "") +
-              `\n👍 ${item.posVotes} 👎 ${item.negVotes}` +
-              `\n💾 ${filesize(item.size)}`,
-            match: titleMatch,
-            strongMatch,
-            // round to the precision of 1 decimal point, for sorting purposes lower
-            fulltextMatch: Math.round(nameMatch * 10) / 10,
-            // this allows other lower quality results, useful for titles where parse-torrent-title parses the title incorrectly
-            weakMatch: nameMatch > 0.3,
-            SeasonEpisode: item.SeasonEpisode,
-            posVotes: item.posVotes,
-            // add a check-mark if we get a strong match based on the parsed filename
-            name: `Webshare${strongMatch ? " ✅" : ""} ${item.parsedTitle.resolution || ""}`,
-            behaviorHints: {
-              bingeGroup:
-                "WebshareStremio|" +
-                item.language +
-                "|" +
-                item.parsedTitle.resolution +
-                "|" +
-                item.parsedTitle.source, //secures quite reliable auto play next episode
-              videoSize: item.size, //for subtitle addons
-              filename: item.name, //for subtitle addons
-            },
-
-            queries: [queryTitle, queryTitleOriginal, queryTitleSk],
-            parsedTitle: cleanedTitle,
-          };
-        })
-        // Filter out items with low match score, exclude TV episodes when searching for movies,
-        // exclude protected files, and ensure series match the correct season/episode
-        .filter(
-          (item) =>
-            !item.protected &&
-            (item.strongMatch || item.weakMatch) &&
-            item.queryTitleYear == item.titleYear && //filters out movies, which we are sure, that should not be send to Stremio
-            !(
-              showInfo.type == "movie" &&
-              item.SeasonEpisode &&
-              !item.name.toLowerCase().includes("part") //some movies can have parts, e.g. "The Dark Knight Part 2", which would lead to exclusion of correct streams
-            ) && //if movie, remove series streams from movie results
-            !(
-              showInfo.type == "series" &&
-              (item.SeasonEpisode?.season != showInfo.series ||
-                item.SeasonEpisode?.episode != showInfo.episode)
-            ), //if series, keep only streams with correct season and episode
-        )
-        .sort((a, b) => {
-          if (a.strongMatch && b.strongMatch) {
-            // Compare strong matches between themselves by match, positive votes and size. Do not
-            // use `fulltextMatch` since we know `match` should provide a better metric here. Using
-            // both `match` and `fulltextMatch` leads to the fact that other criteria are basically
-            // ignored.
-            if (a.match != b.match) {
-              return b.match - a.match;
-            } else if (a.posVotes != b.posVotes) {
-              return b.posVotes - a.posVotes;
-            } else {
-              return b.behaviorHints.videoSize - a.behaviorHints.videoSize;
-            }
-          } else if (!a.strongMatch && !b.strongMatch) {
-            // Compare weak matches between themselves by match, fulltextMatch, positive votes and
-            // size. Note that `match` is below the strong-threshold but still is the primary
-            // indicator of quality.
-            if (a.match != b.match) {
-              return b.match - a.match;
-            } else if (a.fulltextMatch != b.fulltextMatch) {
-              return b.fulltextMatch - a.fulltextMatch;
-            } else if (a.posVotes != b.posVotes) {
-              return b.posVotes - a.posVotes;
-            } else {
-              return b.behaviorHints.videoSize - a.behaviorHints.videoSize;
-            }
-          } else {
-            // if one is strong and the other is not, we can just compare by `match` since it
-            // definitely won't be the same
-            return b.match - a.match;
-          }
-        })
-        .slice(0, 100)
-    );
+    return results
+      .map((item) => {
+        const matchScores = calculateMatchScores(item, queries, showInfo);
+        return mapToStream(item, matchScores, token);
+      })
+      .filter((item) => shouldIncludeResult(item, showInfo))
+      .sort(compareStreams)
+      .slice(0, 100);
   },
 
   getUrl: async (ident, token) => {
