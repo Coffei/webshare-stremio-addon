@@ -1,3 +1,4 @@
+const { performance } = require("node:perf_hooks");
 const needle = require("needle");
 const md5 = require("nano-md5");
 const sha1 = require("sha1");
@@ -172,11 +173,12 @@ const webshare = {
   search: async (showInfo, token) => {
     const queries = getQueries(showInfo);
     // Get all results from different queries
-    console.time("Executing all search queries");
+    const searchStartMs = performance.now();
     let results = await Promise.all(
       queries.map((query) => search(query, token)),
     );
-    console.timeEnd("Executing all search queries");
+    const searchDurationMs = Math.round(performance.now() - searchStartMs);
+    console.log(`Executing all search queries: ${searchDurationMs}ms`);
 
     // Create a unique list by using an object to track items by their ident
     results = Object.values(
