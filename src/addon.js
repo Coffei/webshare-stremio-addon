@@ -44,6 +44,13 @@ const manifest = {
       title: "Webshare.cz password",
       required: true,
     },
+    {
+      key: "sorting",
+      type: "select",
+      title: "Sort streams by",
+      options: ["default", "votes", "filesize", "resolution"],
+      default: "default",
+    },
   ],
   stremioAddonsConfig: {
     issuer: "https://stremio-addons.net",
@@ -53,6 +60,39 @@ const manifest = {
 };
 
 const builder = new addonBuilder(manifest);
+
+// Sorting function for streams based on user preference when configuring on /configure page
+const sortStreamsByPreference = (streams, pref) => {
+  if (!pref || pref === "default") return streams;
+  const byVotes = (a, b) =>
+    parseInt(b.posVotes || 0, 10) - parseInt(a.posVotes || 0, 10);
+  const bySize = (a, b) =>
+    parseInt(b?.behaviorHints?.videoSize || 0, 10) -
+    parseInt(a?.behaviorHints?.videoSize || 0, 10);
+  const rank = (res) =>
+    ({
+      "2160p": 5,
+      "1440p": 4,
+      "1080p": 3,
+      "720p": 2,
+      "480p": 1,
+      "360p": 0,
+    }[String(res || "").toLowerCase()] ?? -1);
+  const getRes = (s) =>
+    (s.name && s.name.match(/\b(2160p|1440p|1080p|720p|480p|360p)\b/i)?.[1]) || // In future we should add logic also to get resolution from [ident] file_info API if available
+    null; 
+
+  switch (pref) {
+    case "votes":
+      return [...streams].sort(byVotes);
+    case "filesize":
+      return [...streams].sort(bySize);
+    case "resolution":
+      return [...streams].sort((a, b) => rank(getRes(b)) - rank(getRes(a)));
+    default:
+      return streams;
+  }
+};
 
 const getToken = async (config) => {
   if (config.saltedPassword) {
@@ -73,8 +113,9 @@ builder.defineStreamHandler(async function (args) {
       if (info) {
         const wsToken = await getToken(args.config || {});
         const streams = await webshare.search(info, wsToken);
-
-        return { streams: streams };
+        const sorted = sortStreamsByPreference(streams, (args.config || {}).sorting);
+        
+        return { streams: sorted };
       }
     } else if (args.id.startsWith("coffei.webshare:")) {
       const wsId = args.id.substring(16);
@@ -93,8 +134,9 @@ builder.defineStreamHandler(async function (args) {
       if (info) {
         const wsToken = await getToken(args.config || {});
         const streams = await webshare.search(info, wsToken);
+        const sorted = sortStreamsByPreference(streams, (args.config || {}).sorting); 
 
-        return { streams: streams };
+        return { streams: sorted };
       }
     } else {
       return { streams: [] };
@@ -200,7 +242,7 @@ app.get(["/configure", "/"], (req, res) => {
 
 // Finish installation - salt the password and redirect to install/update the plugin
 app.post("/configure", async (req, res) => {
-  const { login, password } = req.body;
+  const { login, password, sorting } = req.body;
   let salted;
   let token;
   try {
@@ -209,6 +251,7 @@ app.post("/configure", async (req, res) => {
   } catch (e) {}
   if (token) {
     const config = { login, saltedPassword: salted };
+    if (sorting && sorting !== "default") config.sorting = sorting;
     const url = `stremio://${host}/${encodeURIComponent(JSON.stringify(config))}/manifest.json`;
     res.redirect(url);
   } else {
