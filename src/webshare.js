@@ -50,67 +50,60 @@ const cleanTitle = (text) => {
   );
 };
 
-const calculateMatchScores = (item, queries, showInfo) => {
+const calculateMatchScores = (item, showInfo) => {
   //if there is parsed year of release for found stream, add it to comparison to have better sorting results
   const titleYear =
     showInfo.type === "movie" &&
     item.parsedTitle.year &&
     showInfo.year &&
-    !ptt.parse(queries[0]).year
+    !ptt.parse(showInfo.originalName).year //if there is year in title, do not compare years e.g. Wonder Woman 1984 (2020)
       ? `${showInfo.year}`
-      : ""; //if there is year in title, do not compare years e.g. Wonder Woman 1984 (2020)
-  const queryTitleYear =
+      : "";
+  const itemTitleYear =
     showInfo.type === "movie" &&
     item.parsedTitle.year &&
     showInfo.year &&
-    !ptt.parse(queries[0]).year
+    !ptt.parse(showInfo.originalName).year //if there is year in title, do not compare years e.g. Wonder Woman 1984 (2020)
       ? `${item.parsedTitle.year}`
       : "";
 
-  const cleanedTitle = cleanTitle(item.parsedTitle.title) + titleYear;
-  const cleanedName = cleanTitle(item.name);
+  const cleanedItemTitle = cleanTitle(item.parsedTitle.title) + itemTitleYear;
+  const cleanedItemName = cleanTitle(item.name);
 
-  const queryTitle = normalizeText(
-    showInfo.type == "series"
-      ? queries[0]?.split(" ").slice(0, -1).join(" ")
-      : queries[0] + queryTitleYear,
-  );
+  const title = showInfo.name && normalizeText(showInfo.name + titleYear);
+  const titleSk = showInfo.nameSk && normalizeText(showInfo.nameSk + titleYear);
+  const titleEn = showInfo.nameEn && normalizeText(showInfo.nameEn + titleYear);
+  const titleOriginal =
+    showInfo.originalName && normalizeText(showInfo.originalName + titleYear);
 
-  const queryTitleSk = normalizeText(
-    showInfo.type == "series"
-      ? queries[1]?.split(" ").slice(0, -1).join(" ")
-      : queries[1] + queryTitleYear,
-  );
-
-  const queryTitleOriginal = normalizeText(
-    showInfo.type == "series"
-      ? queries[2]?.split(" ").slice(0, -1).join(" ")
-      : queries[2] + queryTitleYear,
-  );
-
-  const matchQueries = [
-    queryTitle,
-    queryTitleOriginal,
-    queryTitleSk,
-    queryTitleSk &&
-      queryTitleOriginal &&
-      queryTitleSk + "/" + queryTitleOriginal,
-    queryTitle && queryTitleOriginal && queryTitle + "/" + queryTitleOriginal,
+  const matchTitles = [
+    title,
+    titleOriginal,
+    titleSk,
+    titleEn,
+    titleSk && titleOriginal && titleSk + "/" + titleOriginal,
+    title && titleOriginal && title + "/" + titleOriginal,
+    titleSk && titleEn && titleSk + "/" + titleEn,
+    title && titleEn && title + "/" + titleEn,
+    titleEn && titleOriginal && titleEn + "/" + titleOriginal,
+    titleOriginal && titleEn && titleOriginal + "/" + titleEn,
   ].filter((q) => q);
 
-  const titleMatch = stringSimilarity.findBestMatch(cleanedTitle, matchQueries)
-    .bestMatch.rating;
+  const titleMatch = stringSimilarity.findBestMatch(
+    cleanedItemTitle,
+    matchTitles,
+  ).bestMatch.rating;
 
-  const nameMatch = stringSimilarity.findBestMatch(cleanedName, matchQueries)
+  const nameMatch = stringSimilarity.findBestMatch(cleanedItemName, matchTitles)
     .bestMatch.rating;
 
   return {
     titleYear,
-    queryTitleYear,
-    cleanedTitle,
+    itemTitleYear,
+    cleanedItemTitle,
     titleMatch,
     nameMatch,
-    queries: [queryTitle, queryTitleOriginal, queryTitleSk],
+    titles: [title, titleSk, titleEn, titleOriginal],
   };
 };
 
@@ -128,7 +121,7 @@ const mapToStream = (item, matchScores, token) => {
   return {
     ident: item.ident,
     titleYear: matchScores.titleYear,
-    queryTitleYear: matchScores.queryTitleYear,
+    itemTitleYear: matchScores.itemTitleYear,
     url: url + "getUrl/" + item.ident + "?token=" + token,
     description:
       item.name +
@@ -154,8 +147,8 @@ const mapToStream = (item, matchScores, token) => {
       videoSize: item.size,
       filename: item.name,
     },
-    queries: matchScores.queries,
-    parsedTitle: matchScores.cleanedTitle,
+    titles: matchScores.titles,
+    parsedTitle: matchScores.cleanedItemTitle,
     protected: item.protected,
   };
 };
@@ -165,7 +158,7 @@ const mapToStream = (item, matchScores, token) => {
 const shouldIncludeResult = (item, showInfo) => {
   if (item.protected) return false;
   if (!item.strongMatch && !item.weakMatch) return false;
-  if (item.queryTitleYear != item.titleYear) return false;
+  if (item.itemTitleYear != item.titleYear) return false;
 
   // Exclude TV episodes when searching for movies
   if (
@@ -361,7 +354,7 @@ const webshare = {
 
     return results
       .map((item) => {
-        const matchScores = calculateMatchScores(item, queries, showInfo);
+        const matchScores = calculateMatchScores(item, showInfo);
         return mapToStream(item, matchScores, token);
       })
       .filter((item) => shouldIncludeResult(item, showInfo))
