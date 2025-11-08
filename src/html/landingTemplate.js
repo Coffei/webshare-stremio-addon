@@ -242,7 +242,10 @@ function landingTemplate(manifest, error, configValues) {
 			<form class="pure-form" id="mainForm" action="/configure" method="POST">
 				${options}
 
-                <button type="submit">INSTALL</button>
+                <div style="display:flex; gap: 1vh; flex-wrap: wrap;">
+                  <button type="submit" name="install" value="desktop">INSTALL</button>
+                  <button style="background-color: grey; color: white;" type="submit" name="install" value="web" formtarget="_blank">INSTALL (Web)</button>
+                </div>
 			</form>
 
 			<div class="separator"></div>
