@@ -209,7 +209,7 @@ app.post("/configure", async (req, res) => {
   } catch (e) {}
   if (token) {
     const config = { login, saltedPassword: salted };
-    
+
     const manifestPath = `${encodeURIComponent(JSON.stringify(config))}/manifest.json`;
     const httpManifestUrl = new URL(manifestPath, url).toString();
 
