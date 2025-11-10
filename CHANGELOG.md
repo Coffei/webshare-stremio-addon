@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.3
+
+- Optimize and fix calculation of match scores
+
 ## 0.7.2
 
 - Internal improvements.
