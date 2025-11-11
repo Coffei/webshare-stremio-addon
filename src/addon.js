@@ -200,7 +200,7 @@ app.get(["/configure", "/"], (req, res) => {
 
 // Finish installation - salt the password and redirect to install/update the plugin
 app.post("/configure", async (req, res) => {
-  const { login, password } = req.body;
+  const { login, password, install } = req.body;
   let salted;
   let token;
   try {
@@ -209,8 +209,18 @@ app.post("/configure", async (req, res) => {
   } catch (e) {}
   if (token) {
     const config = { login, saltedPassword: salted };
-    const url = `stremio://${host}/${encodeURIComponent(JSON.stringify(config))}/manifest.json`;
-    res.redirect(url);
+
+    const manifestPath = `${encodeURIComponent(JSON.stringify(config))}/manifest.json`;
+    const httpManifestUrl = new URL(manifestPath, url).toString();
+
+    const desktopUrl = `stremio://${host}/${manifestPath}`;
+    const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(httpManifestUrl)}`;
+
+    if (install === "web") {
+      res.redirect(webUrl);
+    } else {
+      res.redirect(desktopUrl);
+    }
   } else {
     const landingHTML = landingTemplate(manifest, true, { login });
     res.setHeader("content-type", "text/html");
