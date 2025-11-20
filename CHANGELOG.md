@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.4
+
+- Add _Install to web_ option in the installation page.
+
 ## 0.7.3
 
 - Optimize and fix calculation of match scores
