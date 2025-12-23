@@ -108,7 +108,7 @@ function extractSeasonEpisode(filename) {
   // Handle 01x01 (001) with any non-alphanumeric characters as separators
   const standardRegex = new RegExp(
     `(?:^|${uNAN})(?:(?:s|season\\s*)(\\d{1,2})${uNAN}*(?:e|ep|episode\\s*)(\\d{1,3})` + //e.g. S01E01
-      `|(\\d{1,2})${uNAN}*(?:x|×)${uNAN}*(\\d{1,3}))(?:${uNAN}|$)`, //e.g. 01 x 01
+      `|(\\d{1,2})(?!${uNAN}x26[456])${uNAN}*(?:x|×)${uNAN}*(\\d{1,3}))(?:${uNAN}|$)`, //e.g. 01 x 01, ignores a codec that might look like a episode (e.g. `audio 5.1 x264`)
     "iu",
   );
 

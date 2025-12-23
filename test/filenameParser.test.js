@@ -219,3 +219,46 @@ test("extractSeasonEpisode", () => {
   expect(extractSeasonEpisode("1E01.Series.mkv")).toBeNull();
   expect(extractSeasonEpisode("S1x01.Drama.mkv")).toBeNull();
 });
+
+test("extractSeasonEpisode ignores x26* version codec", () => {
+  expect(extractSeasonEpisode("Thing_5.1.x264.mkv")).toBeNull();
+  expect(extractSeasonEpisode("Thing_5.1 x264.mkv")).toBeNull();
+  expect(extractSeasonEpisode("Thing_5.1_x264.mkv")).toBeNull();
+
+  expect(extractSeasonEpisode("Thing_5.1.x265.mkv")).toBeNull();
+  expect(extractSeasonEpisode("Thing_5.1 x265.mkv")).toBeNull();
+  expect(extractSeasonEpisode("Thing_5.1_x265.mkv")).toBeNull();
+
+  expect(extractSeasonEpisode("Thing_5.1.x266.mkv")).toBeNull();
+  expect(extractSeasonEpisode("Thing_5.1 x266.mkv")).toBeNull();
+  expect(extractSeasonEpisode("Thing_5.1_x266.mkv")).toBeNull();
+
+  // not a valid codec number
+  expect(extractSeasonEpisode("Thing_5.1.x261.mkv")).toStrictEqual({
+    season: 1,
+    episode: 261,
+  });
+  expect(extractSeasonEpisode("Thing_5.1 x261.mkv")).toStrictEqual({
+    season: 1,
+    episode: 261,
+  });
+  expect(extractSeasonEpisode("Thing_5.1x261.mkv")).toStrictEqual({
+    season: 1,
+    episode: 261,
+  });
+
+  // without a space
+  expect(extractSeasonEpisode("Thing_5.1x264.mkv")).toStrictEqual({
+    season: 1,
+    episode: 264,
+  });
+  // codec broken by a character
+  expect(extractSeasonEpisode("Thing_5.1 x 264.mkv")).toStrictEqual({
+    season: 1,
+    episode: 264,
+  });
+  expect(extractSeasonEpisode("Thing_5.1.x.264.mkv")).toStrictEqual({
+    season: 1,
+    episode: 264,
+  });
+});
