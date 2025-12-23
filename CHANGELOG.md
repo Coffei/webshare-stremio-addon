@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.5
+
+- Do not ignore streams incorrectly detected as series.
+  - Some movies might contain keywords that are used for series detection, like `episode` or `part`.
+    Streams that contain these keywords should not be ignored.
+- Prevent codec x264 to be detected as an episode number if preceded with another number.
+
 ## 0.7.4
 
 - Add _Install to web_ option in the installation page.
