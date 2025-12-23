@@ -164,7 +164,12 @@ const shouldIncludeResult = (item, showInfo) => {
   if (
     showInfo.type == "movie" &&
     item.SeasonEpisode &&
-    !item.name.toLowerCase().includes("part")
+    !["episode", "part"].some((keyword) => {
+      return (
+        item.behaviorHints.filename.toLowerCase().includes(keyword) &&
+        item.titles.some((title) => title?.includes(keyword))
+      );
+    })
   ) {
     return false;
   }

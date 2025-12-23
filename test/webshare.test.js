@@ -390,3 +390,97 @@ describe("formatting description and name", () => {
     expect(results[4].description).toContain("🌐 EN");
   });
 });
+
+describe("exclude TV episodes when searching for movies - real world examples", () => {
+  test("Harry Potter and the Deathly Hallows - Part 1: includes Part 1 file, excludes episode file", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "Harry Potter and the Deathly Hallows - Part 1",
+      type: "movie",
+      year: "2010",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          // Should be included: "Part 1" in both title and filename
+          file(
+            "1",
+            "Harry Potter and the Deathly Hallows - Part 1 (2010) (2160p BluRay x265 10bit HDR Tigole).mkv",
+            "20000000000",
+            "10",
+            "0",
+          ),
+          // Should be excluded: has SeasonEpisode (01x14) but "part" not in filename
+          file(
+            "2",
+            "Harry Potter and the Deathly Hallows - 01x14 (2160p BluRay x265 10bit HDR Tigole).mkv",
+            "20000000000",
+            "5",
+            "0",
+          ),
+          // should be excluded: contains "Episode" in filename but not in title
+          file(
+            "3",
+            "Harry Potter and the Deathly Hallows Episode 1.mkv",
+            "20000000000",
+            "3",
+            "0",
+          ),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    expect(results[0].ident).toBe("1");
+  });
+
+  test("Star Wars Episode I Phantom Menace: includes files with Episode in both, excludes when Episode only in title", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "Star Wars Episode I Phantom Menace",
+      type: "movie",
+      year: "1999",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          // Should be included: "Episode" in both title and filename
+          file(
+            "1",
+            "Star.Wars.Episode.I.Phantom.Menace.1999.JAPANESE.720p.BluRay.AC3.5.1.x264-JPN.mp4",
+            "2000000000",
+            "10",
+            "0",
+          ),
+
+          // Should be excluded: has SeasonEpisode (S02E03) but "Episode" not in filename (only in title)
+          file(
+            "2",
+            "Star.Wars.1.Phantom.Menace. S02E03 . 1999.mp4",
+            "2000000000",
+            "5",
+            "0",
+          ),
+
+          // Should be excluded: contains "Part" in filename but not in title
+          file(
+            "3",
+            "Star.Wars.Part.1.Phantom.Menace.1999.mp4",
+            "2000000000",
+            "3",
+            "0",
+          ),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    expect(results.map((x) => x.ident)).toStrictEqual(["1"]);
+  });
+});
