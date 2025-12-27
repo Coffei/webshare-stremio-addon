@@ -1,3 +1,5 @@
+const uNAN = "[^\\p{L}\\p{N}]"; // Unicode non-alphanumeric
+
 function extractLanguage(filename) {
   // Mapping of language codes to standardized format
   const languageMap = {
@@ -34,7 +36,6 @@ function extractLanguage(filename) {
   // First check for subtitle patterns - these take priority
   const subtitleKeywords = ["tit", "titulky", "subs", "sub"];
   const audioKeywords = ["audio", "dabing", "dab", "dubbing", "dub"];
-  const uNAN = "[^\\p{L}\\p{N}]"; // Unicode non-alphanumeric
 
   // Unified patterns array for all language-detecting regexes, each using capturing groups
   // Use non-alphanumeric boundaries to avoid false positives and ensure correct matches
@@ -103,8 +104,6 @@ function extractLanguage(filename) {
 }
 
 function extractSeasonEpisode(filename) {
-  const uNAN = "[^\\p{L}\\p{N}]"; // Unicode non-alphanumeric
-
   // Handle 01x01 (001) with any non-alphanumeric characters as separators
   const standardRegex = new RegExp(
     `(?:^|${uNAN})(?:(?:s|season\\s*)(\\d{1,2})${uNAN}*(?:e|ep|episode\\s*)(\\d{1,3})` + //e.g. S01E01
