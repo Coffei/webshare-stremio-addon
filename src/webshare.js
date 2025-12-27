@@ -51,7 +51,7 @@ const cleanTitle = (text) => {
 };
 
 const calculateMatchScores = (item, showInfo) => {
-  //if there is parsed year of release for found stream, add it to comparison to have better sorting results
+  // if there is parsed year of release for found stream, add it to comparison to have better sorting results
   const titleYear =
     showInfo.type === "movie" &&
     item.parsedTitle.year &&
