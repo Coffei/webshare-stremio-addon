@@ -40,17 +40,11 @@ function extractLanguage(filename) {
   // Unified patterns array for all language-detecting regexes, each using capturing groups
   // Use non-alphanumeric boundaries to avoid false positives and ensure correct matches
   const patterns = {
-    // Subtitle keywords with language (e.g., titulky CZ, CZ titulky) fully isolated by non-alphanumeric characters
+    // Subtitle keywords with language (e.g., titulky CZ, CZ titulky or CZsub)
     subtitleRegex: new RegExp(
-      `(?:^|${uNAN})(?:${subtitleKeywords.join("|")})${uNAN}+(${langCodes.join("|")})(?:${uNAN}|$)` + //subtitle keyword + one or more non-alphanumeric characters + language code
-        `|(?:^|${uNAN})(${langCodes.join("|")})${uNAN}+(?:${subtitleKeywords.join("|")})(?:${uNAN}|$)`, //language code + one or more non-alphanumeric characters + subtitle keyword
+      `(?:^|${uNAN})(?:${subtitleKeywords.join("|")})${uNAN}*(${langCodes.join("|")})(?:${uNAN}|$)` + //subtitle keyword + zero or more non-alphanumeric characters + language code
+        `|(?:^|${uNAN})(${langCodes.join("|")})${uNAN}*(?:${subtitleKeywords.join("|")})(?:${uNAN}|$)`, //language code + zero or more non-alphanumeric characters + subtitle keyword
       "giu",
-    ),
-    // Concatenated format (e.g., CSsub, CZtit) - directly add titulky for matches
-    concatenatedSubtitleRegex: new RegExp(
-      `(${langCodes.join("|")})(?:${subtitleKeywords.join("|")})` + //language code + subtitle keyword
-        `|(?:${subtitleKeywords.join("|")})(${langCodes.join("|")})`, //subtitle keyword + language code
-      "gi",
     ),
     //generalReges, language codes...
     generalRegex: new RegExp(
@@ -73,10 +67,7 @@ function extractLanguage(filename) {
         const lang = match[i] ? match[i].toUpperCase() : null;
         if (lang && languageMap[lang]) {
           // If this is the subtitle/audio pattern (index 0), check for subtitle keyword
-          if (
-            patternName === "subtitleRegex" ||
-            patternName === "concatenatedSubtitleRegex"
-          ) {
+          if (patternName === "subtitleRegex") {
             const matchStr = match[0].toLowerCase();
             const hasSubtitleKeyword = subtitleKeywords.some((kw) =>
               matchStr.includes(kw),
