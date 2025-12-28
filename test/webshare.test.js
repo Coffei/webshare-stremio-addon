@@ -484,3 +484,286 @@ describe("exclude TV episodes when searching for movies - real world examples", 
     expect(results.map((x) => x.ident)).toStrictEqual(["1"]);
   });
 });
+
+describe("stream items are enhanced with few fields", () => {
+  test("title year for movies", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "The Matrix",
+      type: "movie",
+      year: "1999",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          file(
+            "1",
+            "The.Matrix.1999.1080p.BluRay.mkv",
+            "2000000000",
+            "10",
+            "0",
+          ),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    // titleYear should be the show's year when item has a parsed year
+    expect(results[0].titleYear).toBe("1999");
+  });
+
+  test("title year is empty when movie title contains year", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "Wonder Woman 1984",
+      type: "movie",
+      year: "2020",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          file(
+            "1",
+            "Wonder.Woman.1984.2020.1080p.BluRay.mkv",
+            "2000000000",
+            "10",
+            "0",
+          ),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    // titleYear should be empty when original title contains a year
+    expect(results[0].titleYear).toBe("");
+  });
+
+  test("title year is empty for series", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "Breaking Bad",
+      type: "series",
+      series: "1",
+      episode: "1",
+      year: "2008",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          file(
+            "1",
+            "Breaking.Bad.S01E01.2008.1080p.BluRay.mkv",
+            "2000000000",
+            "10",
+            "0",
+          ),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    // titleYear should be empty for series
+    expect(results[0].titleYear).toBe("");
+  });
+
+  test("item title year for movies", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "The Matrix",
+      type: "movie",
+      year: "1999",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          file(
+            "1",
+            "The.Matrix.1999.1080p.BluRay.mkv",
+            "2000000000",
+            "10",
+            "0",
+          ),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    // itemTitleYear should be the parsed year from the filename
+    expect(results[0].itemTitleYear).toBe("1999");
+  });
+
+  test("item title year mismatch filters out results", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "The Matrix",
+      type: "movie",
+      year: "1999",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          // This has wrong year in filename - should be filtered out
+          file(
+            "1",
+            "The.Matrix.2021.1080p.BluRay.mkv",
+            "2000000000",
+            "10",
+            "0",
+          ),
+          // This has correct year - should be included
+          file("2", "The.Matrix.1999.720p.BluRay.mkv", "1000000000", "5", "0"),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    expect(results[0].ident).toBe("2");
+    expect(results[0].itemTitleYear).toBe("1999");
+  });
+
+  test("cleaned item title", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "The Matrix",
+      type: "movie",
+      year: "1999",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          file(
+            "1",
+            "The.Matrix.1999.1080p.BluRay.mkv",
+            "2000000000",
+            "10",
+            "0",
+          ),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    // parsedTitle in the result is actually cleanedItemTitle
+    // It should be normalized (lowercase, no special chars) + itemTitleYear
+    expect(results[0].parsedTitle).toBe("the matrix1999");
+  });
+
+  test("cleaned item title removes subtitles and titulky keywords", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "The Matrix",
+      type: "movie",
+      year: "1999",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          file(
+            "1",
+            "The.Matrix.1999.Subtitles.CZ.1080p.BluRay.mkv",
+            "2000000000",
+            "10",
+            "0",
+          ),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    // "subtitles" should be removed from the cleaned title
+    expect(results[0].parsedTitle).toBe("the matrix1999");
+  });
+
+  test("titles", async () => {
+    const showInfo = {
+      name: "Matice",
+      nameSk: "Matica",
+      nameEn: "The Matrix EN",
+      originalName: "The Matrix",
+      type: "movie",
+      year: "1999",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          file(
+            "1",
+            "The.Matrix.1999.1080p.BluRay.mkv",
+            "2000000000",
+            "10",
+            "0",
+          ),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    // titles should contain normalized versions with year appended
+    expect(results[0].titles).toEqual({
+      title: "matice1999",
+      titleSk: "matica1999",
+      titleEn: "the matrix en1999",
+      titleOriginal: "the matrix1999",
+    });
+  });
+
+  test("titles without year for series", async () => {
+    const showInfo = {
+      name: "Perníkový táta",
+      nameSk: "Pernikový fotr",
+      nameEn: "Breaking Bad EN",
+      originalName: "Breaking Bad",
+      type: "series",
+      series: "1",
+      episode: "1",
+      year: "2008",
+    };
+
+    needle.mockImplementation((method, url, data, headers) => ({
+      body: {
+        children: [
+          file(
+            "1",
+            "Breaking.Bad.S01E01.1080p.BluRay.mkv",
+            "2000000000",
+            "10",
+            "0",
+          ),
+        ],
+      },
+    }));
+
+    const results = await webshare.search(showInfo, null);
+    expect(results.length).toBe(1);
+    // titles for series should not have year appended (titleYear is empty)
+    expect(results[0].titles).toEqual({
+      title: "pernikovy tata",
+      titleSk: "pernikovy fotr",
+      titleEn: "breaking bad en",
+      titleOriginal: "breaking bad",
+    });
+  });
+});

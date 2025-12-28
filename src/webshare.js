@@ -50,7 +50,7 @@ const cleanTitle = (text) => {
   );
 };
 
-const calculateMatchScores = (item, showInfo) => {
+const enhanceItem = (item, showInfo) => {
   // if there is parsed year of release for found stream, add it to comparison to have better sorting results
   const titleYear =
     showInfo.type === "movie" &&
@@ -68,13 +68,25 @@ const calculateMatchScores = (item, showInfo) => {
       : "";
 
   const cleanedItemTitle = cleanTitle(item.parsedTitle.title) + itemTitleYear;
-  const cleanedItemName = cleanTitle(item.name);
 
   const title = showInfo.name && normalizeText(showInfo.name + titleYear);
   const titleSk = showInfo.nameSk && normalizeText(showInfo.nameSk + titleYear);
   const titleEn = showInfo.nameEn && normalizeText(showInfo.nameEn + titleYear);
   const titleOriginal =
     showInfo.originalName && normalizeText(showInfo.originalName + titleYear);
+
+  return {
+    ...item,
+    titleYear,
+    itemTitleYear,
+    cleanedItemTitle,
+    titles: { title, titleSk, titleEn, titleOriginal },
+  };
+};
+
+const calculateMatchScores = (item) => {
+  const cleanedItemName = cleanTitle(item.name);
+  const { title, titleSk, titleEn, titleOriginal } = item.titles;
 
   const matchTitles = [
     title,
@@ -90,21 +102,14 @@ const calculateMatchScores = (item, showInfo) => {
   ].filter((q) => q);
 
   const titleMatch = stringSimilarity.findBestMatch(
-    cleanedItemTitle,
+    item.cleanedItemTitle,
     matchTitles,
   ).bestMatch.rating;
 
   const nameMatch = stringSimilarity.findBestMatch(cleanedItemName, matchTitles)
     .bestMatch.rating;
 
-  return {
-    titleYear,
-    itemTitleYear,
-    cleanedItemTitle,
-    titleMatch,
-    nameMatch,
-    titles: [title, titleSk, titleEn, titleOriginal],
-  };
+  return { titleMatch, nameMatch };
 };
 
 const mapToStream = (item, matchScores, token) => {
@@ -120,8 +125,8 @@ const mapToStream = (item, matchScores, token) => {
 
   return {
     ident: item.ident,
-    titleYear: matchScores.titleYear,
-    itemTitleYear: matchScores.itemTitleYear,
+    titleYear: item.titleYear,
+    itemTitleYear: item.itemTitleYear,
     url: url + "getUrl/" + item.ident + "?token=" + token,
     description:
       item.name +
@@ -147,8 +152,8 @@ const mapToStream = (item, matchScores, token) => {
       videoSize: item.size,
       filename: item.name,
     },
-    titles: matchScores.titles,
-    parsedTitle: matchScores.cleanedItemTitle,
+    titles: item.titles,
+    parsedTitle: item.cleanedItemTitle,
     protected: item.protected,
   };
 };
@@ -167,7 +172,7 @@ const shouldIncludeResult = (item, showInfo) => {
     !["episode", "part"].some((keyword) => {
       return (
         item.behaviorHints.filename.toLowerCase().includes(keyword) &&
-        item.titles.some((title) => title?.includes(keyword))
+        Object.values(item.titles).some((title) => title?.includes(keyword))
       );
     })
   ) {
@@ -359,8 +364,9 @@ const webshare = {
 
     return results
       .map((item) => {
-        const matchScores = calculateMatchScores(item, showInfo);
-        return mapToStream(item, matchScores, token);
+        const enhanced = enhanceItem(item, showInfo);
+        const matchScores = calculateMatchScores(enhanced);
+        return mapToStream(enhanced, matchScores, token);
       })
       .filter((item) => shouldIncludeResult(item, showInfo))
       .sort(compareStreams)
