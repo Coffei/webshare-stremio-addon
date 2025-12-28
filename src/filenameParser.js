@@ -28,7 +28,7 @@ function extractLanguage(filename) {
     SLOVENCINA: "SK",
   };
 
-  // Split language codes into short (2-3 chars) and long codes for more precise matching
+  // Sort language codes from most to least specific (longest to shortest)
   const langCodes = Object.keys(languageMap).sort(
     (a, b) => b.length - a.length,
   );
@@ -54,8 +54,6 @@ function extractLanguage(filename) {
     ),
   };
 
-  //
-  // Store all found languages
   const foundLanguages = new Set();
   const subtitleLangs = new Set();
 
@@ -66,21 +64,12 @@ function extractLanguage(filename) {
       for (let i = 1; i < match.length; i++) {
         const lang = match[i] ? match[i].toUpperCase() : null;
         if (lang && languageMap[lang]) {
-          // If this is the subtitle/audio pattern (index 0), check for subtitle keyword
           if (patternName === "subtitleRegex") {
-            const matchStr = match[0].toLowerCase();
-            const hasSubtitleKeyword = subtitleKeywords.some((kw) =>
-              matchStr.includes(kw),
-            );
-            if (hasSubtitleKeyword) {
-              foundLanguages.add(`${languageMap[lang]} titulky`);
-              subtitleLangs.add(languageMap[lang]);
-              continue;
-            }
-          }
-
-          // Only add plain language code if not already marked as 'titulky'
-          if (!subtitleLangs.has(languageMap[lang])) {
+            // Add subtitle language
+            foundLanguages.add(`${languageMap[lang]} titulky`);
+            subtitleLangs.add(languageMap[lang]);
+          } else if (!subtitleLangs.has(languageMap[lang])) {
+            // Only add plain language code if not already marked as subtitles
             foundLanguages.add(languageMap[lang]);
           }
         }
