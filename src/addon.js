@@ -1,6 +1,7 @@
 const pkg = require("../package.json");
 const { addonBuilder, getRouter } = require("stremio-addon-sdk");
-const webshare = require("./webshare");
+const { saltPassword, login, search, getById, getUrl } = require("./webshare");
+const { searchStreams } = require("./streams");
 const { findShowInfo, findShowInfoInTmdb } = require("./meta");
 const express = require("express");
 const path = require("path");
@@ -56,13 +57,10 @@ const builder = new addonBuilder(manifest);
 
 const getToken = async (config) => {
   if (config.saltedPassword) {
-    return await webshare.login(config.login, config.saltedPassword);
+    return await login(config.login, config.saltedPassword);
   } else {
-    const saltedPassword = await webshare.saltPassword(
-      config.login,
-      config.password,
-    );
-    return await webshare.login(config.login, saltedPassword);
+    const salted = await saltPassword(config.login, config.password);
+    return await login(config.login, salted);
   }
 };
 
@@ -72,7 +70,7 @@ builder.defineStreamHandler(async function (args) {
       const info = await findShowInfo(args.type, args.id);
       if (info) {
         const wsToken = await getToken(args.config || {});
-        const streams = await webshare.search(info, wsToken);
+        const streams = await searchStreams(info, wsToken);
 
         return { streams: streams };
       }
@@ -92,7 +90,7 @@ builder.defineStreamHandler(async function (args) {
       const info = await findShowInfoInTmdb(args.type, id);
       if (info) {
         const wsToken = await getToken(args.config || {});
-        const streams = await webshare.search(info, wsToken);
+        const streams = await searchStreams(info, wsToken);
 
         return { streams: streams };
       }
@@ -113,7 +111,7 @@ builder.defineStreamHandler(async function (args) {
 builder.defineCatalogHandler(async function (args) {
   try {
     const wsToken = await getToken(args.config || {});
-    const streams = await webshare.directSearch(args.extra.search, wsToken);
+    const streams = await search(args.extra.search, wsToken);
     return {
       metas: streams.map((s) => ({
         id: `coffei.webshare:${s.ident}`,
@@ -139,7 +137,7 @@ builder.defineMetaHandler(async function (args) {
     if (args.id.startsWith("coffei.webshare:")) {
       const wsId = args.id.substring(16);
       const wsToken = await getToken(args.config || {});
-      const info = await webshare.getById(wsId, wsToken);
+      const info = await getById(wsId, wsToken);
       return Promise.resolve({
         meta: {
           id: args.id,
@@ -200,15 +198,15 @@ app.get(["/configure", "/"], (req, res) => {
 
 // Finish installation - salt the password and redirect to install/update the plugin
 app.post("/configure", async (req, res) => {
-  const { login, password, install } = req.body;
+  const { login: userLogin, password: userPassword, install } = req.body;
   let salted;
   let token;
   try {
-    salted = await webshare.saltPassword(login, password);
-    token = await webshare.login(login, salted);
+    salted = await saltPassword(userLogin, userPassword);
+    token = await login(userLogin, salted);
   } catch (e) {}
   if (token) {
-    const config = { login, saltedPassword: salted };
+    const config = { login: userLogin, saltedPassword: salted };
 
     const manifestPath = `${encodeURIComponent(JSON.stringify(config))}/manifest.json`;
     const httpManifestUrl = new URL(manifestPath, url).toString();
@@ -222,7 +220,7 @@ app.post("/configure", async (req, res) => {
       res.redirect(desktopUrl);
     }
   } else {
-    const landingHTML = landingTemplate(manifest, true, { login });
+    const landingHTML = landingTemplate(manifest, true, { login: userLogin });
     res.setHeader("content-type", "text/html");
     res.end(landingHTML);
   }
@@ -232,7 +230,7 @@ app.post("/configure", async (req, res) => {
 app.get("/getUrl/:ident", async (req, res) => {
   try {
     const ident = req.params.ident;
-    const url = await webshare.getUrl(ident, req.query.token);
+    const streamUrl = await getUrl(ident, req.query.token);
 
     const now = new Date();
     // Expires 5 hours from now.
@@ -244,7 +242,7 @@ app.get("/getUrl/:ident", async (req, res) => {
       "max-age=18000, must-revalidate, proxy-revalidate",
     );
 
-    res.redirect(url);
+    res.redirect(streamUrl);
   } catch (error) {
     console.error("Error in getUrl: ", error.code, error.message, error.stack);
   }

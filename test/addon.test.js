@@ -2,10 +2,12 @@ const pkg = require("../package.json");
 const request = require("supertest");
 const express = require("express");
 const webshare = require("../src/webshare");
+const { searchStreams } = require("../src/streams");
 const app = require("../src/addon");
 const { findShowInfo } = require("../src/meta");
 
 jest.mock("../src/webshare");
+jest.mock("../src/streams", () => ({ searchStreams: jest.fn() }));
 jest.mock("../src/meta", () => ({ findShowInfo: jest.fn() }));
 
 describe("GET /getUrl/:ident", () => {
@@ -152,7 +154,7 @@ describe("Stream search handler", () => {
     findShowInfo.mockResolvedValue(info);
     webshare.saltPassword.mockResolvedValueOnce(saltedPassword);
     webshare.login.mockResolvedValueOnce(wsToken);
-    webshare.search.mockResolvedValueOnce(streams);
+    searchStreams.mockResolvedValueOnce(streams);
 
     // Use /stream endpoint as defined by stremio-addon-sdk
     const config = encodeURIComponent(JSON.stringify({ login, password }));
@@ -162,7 +164,7 @@ describe("Stream search handler", () => {
 
     expect(webshare.saltPassword).toHaveBeenCalledWith(login, password);
     expect(webshare.login).toHaveBeenCalledWith(login, saltedPassword);
-    expect(webshare.search).toHaveBeenCalledWith(info, wsToken);
+    expect(searchStreams).toHaveBeenCalledWith(info, wsToken);
     expect(res.body).toHaveProperty("streams");
     expect(res.body.streams).toEqual(streams);
   });
@@ -170,7 +172,7 @@ describe("Stream search handler", () => {
   it("returns streams when saltedPassword is provided in config", async () => {
     findShowInfo.mockResolvedValue(info);
     webshare.login.mockResolvedValueOnce(wsToken);
-    webshare.search.mockResolvedValueOnce(streams);
+    searchStreams.mockResolvedValueOnce(streams);
 
     const config = encodeURIComponent(
       JSON.stringify({ login, saltedPassword }),
@@ -181,7 +183,7 @@ describe("Stream search handler", () => {
 
     expect(webshare.saltPassword).not.toHaveBeenCalled();
     expect(webshare.login).toHaveBeenCalledWith(login, saltedPassword);
-    expect(webshare.search).toHaveBeenCalledWith(info, wsToken);
+    expect(searchStreams).toHaveBeenCalledWith(info, wsToken);
     expect(res.body.streams).toEqual(streams);
   });
 
@@ -197,11 +199,11 @@ describe("Stream search handler", () => {
     expect(res.body.streams).toEqual([]);
   });
 
-  it("returns empty streams if webshare.search throws", async () => {
+  it("returns empty streams if searchStreams throws", async () => {
     findShowInfo.mockResolvedValue(info);
     webshare.saltPassword.mockResolvedValueOnce(saltedPassword);
     webshare.login.mockResolvedValueOnce(wsToken);
-    webshare.search.mockRejectedValueOnce(new Error("fail"));
+    searchStreams.mockRejectedValueOnce(new Error("fail"));
 
     const config = encodeURIComponent(JSON.stringify({ login, password }));
     const res = await request(app)
@@ -271,7 +273,7 @@ describe("Catalog handler", () => {
     const config = encodeURIComponent(JSON.stringify({ login, password }));
     webshare.saltPassword.mockResolvedValueOnce(saltedPassword);
     webshare.login.mockResolvedValueOnce(wsToken);
-    webshare.directSearch.mockResolvedValueOnce([
+    webshare.search.mockResolvedValueOnce([
       {
         ident: "123",
         name: "A.mkv",
@@ -311,7 +313,7 @@ describe("Catalog handler", () => {
     ]);
 
     expect(webshare.saltPassword).toHaveBeenCalledWith(login, password);
-    expect(webshare.directSearch).toHaveBeenCalledWith("test", wsToken);
+    expect(webshare.search).toHaveBeenCalledWith("test", wsToken);
   });
 
   it("returns found items as movies using a salted password", async () => {
@@ -319,7 +321,7 @@ describe("Catalog handler", () => {
       JSON.stringify({ login, saltedPassword }),
     );
     webshare.login.mockResolvedValueOnce(wsToken);
-    webshare.directSearch.mockResolvedValueOnce([
+    webshare.search.mockResolvedValueOnce([
       {
         ident: "123",
         name: "A.mkv",
@@ -358,7 +360,7 @@ describe("Catalog handler", () => {
       },
     ]);
 
-    expect(webshare.directSearch).toHaveBeenCalledWith("test", wsToken);
+    expect(webshare.search).toHaveBeenCalledWith("test", wsToken);
   });
 });
 
