@@ -93,7 +93,7 @@ const findMovieTmdbByImdb = async (type, id) => {
     let resultsEn = null;
 
     //e.g. Naprostí cizinci.original_title = 'Perfetti sconosciuti' = not/not enough webshare search results
-    if (results[0].original_language !== "en") {
+    if (results[0] && results[0].original_language !== "en") {
       const respEn = await needle(
         "get",
         `https://api.themoviedb.org/3/find/${id}?api_key=${tmdbApiKey}&external_source=imdb_id`,
