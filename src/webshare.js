@@ -1,5 +1,5 @@
 const needle = require("needle");
-const md5 = require("nano-md5");
+const md5 = require("cryptmd5");
 const sha1 = require("sha1");
 const formencode = require("form-urlencoded");
 const { filesize } = require("filesize");
@@ -58,7 +58,7 @@ const saltPassword = async (user, password) => {
     headers,
   );
   const salt = saltResp.body.children.find((el) => el.name == "salt").value;
-  return sha1(md5.crypt(password, salt));
+  return sha1(md5.cryptMD5(password, salt));
 };
 
 const login = async (user, saltedPassword) => {

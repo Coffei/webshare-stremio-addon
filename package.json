@@ -10,11 +10,11 @@
     "check-formatting": "prettier . --check"
   },
   "dependencies": {
+    "cryptmd5": "^0.1.2",
     "express": "^5.1.0",
     "filesize": "^10.1.0",
     "form-urlencoded": "^6.1.4",
     "freekeys": "^0.0.4",
-    "nano-md5": "^1.0.5",
     "needle": "^3.3.1",
     "parse-torrent-title": "^1.4.0",
     "sha1": "^1.1.1",
