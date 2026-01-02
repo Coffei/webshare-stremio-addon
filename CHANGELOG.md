@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.6
+
+- Code refactoring
+- Fix issues with long passwords (#31)
+
 ## 0.7.5
 
 - Do not ignore streams incorrectly detected as series.

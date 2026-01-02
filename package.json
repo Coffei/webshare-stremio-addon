@@ -1,6 +1,6 @@
 {
   "name": "stremio-addon-webshare",
-  "version": "0.7.5",
+  "version": "0.7.6",
   "description": "Simple webshare.cz search and streaming.",
   "scripts": {
     "start": "node src/server.js",
