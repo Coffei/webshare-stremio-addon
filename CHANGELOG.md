@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.7
+
+- Relax year filter criteria and allow small tolerance since release year can differ in various sources (#32)
+
 ## 0.7.6
 
 - Code refactoring
