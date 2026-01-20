@@ -559,7 +559,7 @@ describe("stream items are enhanced with few fields", () => {
     expect(results[0].itemTitleYear).toBe("1999");
   });
 
-  test("item title year mismatch filters out results", async () => {
+  test("item title year mismatch filters out results when difference is more than 1 year", async () => {
     const showInfo = {
       name: null,
       nameSk: null,
@@ -569,7 +569,7 @@ describe("stream items are enhanced with few fields", () => {
     };
 
     mockSearch([
-      // This has wrong year in filename - should be filtered out
+      // This has wrong year in filename (22 years difference) - should be filtered out
       file("1", "The.Matrix.2021.1080p.BluRay.mkv", "2000000000", "10", "0"),
       // This has correct year - should be included
       file("2", "The.Matrix.1999.720p.BluRay.mkv", "1000000000", "5", "0"),
@@ -579,6 +579,96 @@ describe("stream items are enhanced with few fields", () => {
     expect(results.length).toBe(1);
     expect(results[0].ident).toBe("2");
     expect(results[0].itemTitleYear).toBe("1999");
+  });
+
+  test("item title year +1 difference is allowed (TMDB vs regional release dates)", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "Eden",
+      type: "movie",
+      year: "2025", // TMDB says 2025
+    };
+
+    mockSearch([
+      // File has 2024 year (e.g., from WebShare where it premiered earlier)
+      file("1", "Eden.2024.1080p.BluRay.mkv", "2000000000", "10", "0"),
+      // File has exact year match
+      file("2", "Eden.2025.720p.BluRay.mkv", "1000000000", "5", "0"),
+    ]);
+
+    const results = await searchStreams(showInfo, null);
+    // Both files should be included - +1 year tolerance
+    expect(results.length).toBe(2);
+    expect(results.map((r) => r.ident).sort()).toStrictEqual(["1", "2"]);
+  });
+
+  test("item title year -1 difference is allowed (TMDB vs regional release dates)", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "Eden",
+      type: "movie",
+      year: "2024", // TMDB says 2024
+    };
+
+    mockSearch([
+      // File has 2025 year (e.g., from another database with later release)
+      file("1", "Eden.2025.1080p.BluRay.mkv", "2000000000", "10", "0"),
+      // File has exact year match
+      file("2", "Eden.2024.720p.BluRay.mkv", "1000000000", "5", "0"),
+    ]);
+
+    const results = await searchStreams(showInfo, null);
+    // Both files should be included - -1 year tolerance
+    expect(results.length).toBe(2);
+    expect(results.map((r) => r.ident).sort()).toStrictEqual(["1", "2"]);
+  });
+
+  test("item title year +2 difference is filtered out", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "Test Movie",
+      type: "movie",
+      year: "2024",
+    };
+
+    mockSearch([
+      // 2 years ahead - should be filtered out
+      file("1", "Test.Movie.2026.1080p.BluRay.mkv", "2000000000", "10", "0"),
+      // Exact match - should be included
+      file("2", "Test.Movie.2024.720p.BluRay.mkv", "1000000000", "5", "0"),
+      // 1 year ahead - should be included
+      file("3", "Test.Movie.2025.720p.BluRay.mkv", "1000000000", "5", "0"),
+    ]);
+
+    const results = await searchStreams(showInfo, null);
+    expect(results.length).toBe(2);
+    expect(results.map((r) => r.ident).sort()).toStrictEqual(["2", "3"]);
+  });
+
+  test("item title year -2 difference is filtered out", async () => {
+    const showInfo = {
+      name: null,
+      nameSk: null,
+      originalName: "Test Movie",
+      type: "movie",
+      year: "2024",
+    };
+
+    mockSearch([
+      // 2 years behind - should be filtered out
+      file("1", "Test.Movie.2022.1080p.BluRay.mkv", "2000000000", "10", "0"),
+      // Exact match - should be included
+      file("2", "Test.Movie.2024.720p.BluRay.mkv", "1000000000", "5", "0"),
+      // 1 year behind - should be included
+      file("3", "Test.Movie.2023.720p.BluRay.mkv", "1000000000", "5", "0"),
+    ]);
+
+    const results = await searchStreams(showInfo, null);
+    expect(results.length).toBe(2);
+    expect(results.map((r) => r.ident).sort()).toStrictEqual(["2", "3"]);
   });
 
   test("cleaned item title", async () => {

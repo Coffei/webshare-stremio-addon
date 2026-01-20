@@ -154,7 +154,19 @@ const mapToStream = (item, matchScores, token) => {
 const shouldIncludeResult = (item, showInfo) => {
   if (item.protected) return false;
   if (!item.strongMatch && !item.weakMatch) return false;
-  if (item.itemTitleYear != item.titleYear) return false;
+  // Allow +/- 1 year tolerance for year comparison, as different databases (TMDB, CSFD, etc.)
+  // may have different release years due to regional premiere differences
+  if (
+    item.itemTitleYear &&
+    item.titleYear &&
+    item.itemTitleYear != "" &&
+    item.titleYear != ""
+  ) {
+    const yearDiff = Math.abs(
+      parseInt(item.itemTitleYear, 10) - parseInt(item.titleYear, 10),
+    );
+    if (yearDiff > 1) return false;
+  }
 
   // Exclude TV episodes when searching for movies
   if (
