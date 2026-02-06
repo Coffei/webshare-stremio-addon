@@ -213,7 +213,7 @@ function landingTemplate(manifest, error, configValues) {
 				</div>
 				`;
       } else if (elem.type === "checkbox") {
-        const isChecked = elem.default === "checked" ? " checked" : "";
+        const isChecked = elem.default === true ? " checked" : "";
         options += `
 				<div class="form-element">
 					<label for="${key}">
