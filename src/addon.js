@@ -45,6 +45,12 @@ const manifest = {
       title: "Webshare.cz password",
       required: true,
     },
+    {
+      key: "enableSearch",
+      type: "checkbox",
+      title: "Enable direct file search",
+      default: true,
+    },
   ],
   stremioAddonsConfig: {
     issuer: "https://stremio-addons.net",
@@ -109,8 +115,12 @@ builder.defineStreamHandler(async function (args) {
 });
 
 builder.defineCatalogHandler(async function (args) {
+  const config = args.config || {};
+  if (config.enableSearch === false) {
+    return { metas: [] };
+  }
   try {
-    const wsToken = await getToken(args.config || {});
+    const wsToken = await getToken(config);
     const streams = await search(args.extra.search, wsToken);
     return {
       metas: streams.map((s) => ({
@@ -198,7 +208,12 @@ app.get(["/configure", "/"], (req, res) => {
 
 // Finish installation - salt the password and redirect to install/update the plugin
 app.post("/configure", async (req, res) => {
-  const { login: userLogin, password: userPassword, install } = req.body;
+  const {
+    login: userLogin,
+    password: userPassword,
+    install,
+    enableSearch,
+  } = req.body;
   let salted;
   let token;
   try {
@@ -206,7 +221,11 @@ app.post("/configure", async (req, res) => {
     token = await login(userLogin, salted);
   } catch (e) {}
   if (token) {
-    const config = { login: userLogin, saltedPassword: salted };
+    const config = {
+      login: userLogin,
+      saltedPassword: salted,
+      enableSearch: !!enableSearch,
+    };
 
     const manifestPath = `${encodeURIComponent(JSON.stringify(config))}/manifest.json`;
     const httpManifestUrl = new URL(manifestPath, url).toString();

@@ -97,7 +97,41 @@ describe("POST /configure", () => {
     );
     expect(match).toBeTruthy();
     const config = JSON.parse(decodeURIComponent(match[1]));
-    expect(config).toEqual({ login, saltedPassword });
+    expect(config).toEqual({ login, saltedPassword, enableSearch: false });
+  });
+
+  it("includes enableSearch true in config when checkbox is checked", async () => {
+    webshare.saltPassword.mockResolvedValueOnce(saltedPassword);
+    webshare.login.mockResolvedValueOnce(token);
+
+    const res = await request(app)
+      .post("/configure")
+      .type("form")
+      .send({ login, password, enableSearch: "on" });
+
+    expect(res.status).toBe(302);
+    const match = res.headers.location.match(
+      /stremio:\/\/[^/]+\/([^/]+)\/manifest\.json/,
+    );
+    const config = JSON.parse(decodeURIComponent(match[1]));
+    expect(config.enableSearch).toBe(true);
+  });
+
+  it("includes enableSearch false in config when checkbox is unchecked", async () => {
+    webshare.saltPassword.mockResolvedValueOnce(saltedPassword);
+    webshare.login.mockResolvedValueOnce(token);
+
+    const res = await request(app)
+      .post("/configure")
+      .type("form")
+      .send({ login, password });
+
+    expect(res.status).toBe(302);
+    const match = res.headers.location.match(
+      /stremio:\/\/[^/]+\/([^/]+)\/manifest\.json/,
+    );
+    const config = JSON.parse(decodeURIComponent(match[1]));
+    expect(config.enableSearch).toBe(false);
   });
 
   it("renders landing page with error if login fails", async () => {
@@ -269,6 +303,10 @@ describe("Catalog handler", () => {
   const saltedPassword = "salted-testpass";
   const wsToken = "test-token";
 
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it("returns found items as movies using a password", async () => {
     const config = encodeURIComponent(JSON.stringify({ login, password }));
     webshare.saltPassword.mockResolvedValueOnce(saltedPassword);
@@ -313,6 +351,83 @@ describe("Catalog handler", () => {
     ]);
 
     expect(webshare.saltPassword).toHaveBeenCalledWith(login, password);
+    expect(webshare.search).toHaveBeenCalledWith("test", wsToken);
+  });
+
+  it("returns empty metas when enableSearch is false", async () => {
+    const config = encodeURIComponent(
+      JSON.stringify({ login, saltedPassword, enableSearch: false }),
+    );
+
+    const res = await request(app)
+      .get(`/${config}/catalog/movie/direct/search=test.json`)
+      .expect(200);
+
+    expect(res.body.metas).toEqual([]);
+    expect(webshare.search).not.toHaveBeenCalled();
+  });
+
+  it("returns results when enableSearch is true", async () => {
+    const config = encodeURIComponent(
+      JSON.stringify({ login, saltedPassword, enableSearch: true }),
+    );
+    webshare.login.mockResolvedValueOnce(wsToken);
+    webshare.search.mockResolvedValueOnce([
+      {
+        ident: "123",
+        name: "A.mkv",
+        posVotes: 1,
+        negVotes: 2,
+        img: "a.jpg",
+        size: 100,
+        language: "en",
+      },
+    ]);
+
+    const res = await request(app)
+      .get(`/${config}/catalog/movie/direct/search=test.json`)
+      .expect(200);
+
+    expect(res.body.metas).toEqual([
+      {
+        id: "coffei.webshare:123",
+        name: "A.mkv",
+        poster: "a.jpg",
+        type: "movie",
+      },
+    ]);
+    expect(webshare.search).toHaveBeenCalledWith("test", wsToken);
+  });
+
+  it("returns results when enableSearch is missing from config (backward compat)", async () => {
+    const config = encodeURIComponent(
+      JSON.stringify({ login, saltedPassword }),
+    );
+    webshare.login.mockResolvedValueOnce(wsToken);
+    webshare.search.mockResolvedValueOnce([
+      {
+        ident: "456",
+        name: "C.mkv",
+        posVotes: 0,
+        negVotes: 0,
+        img: "c.jpg",
+        size: 200,
+        language: "cs",
+      },
+    ]);
+
+    const res = await request(app)
+      .get(`/${config}/catalog/movie/direct/search=test.json`)
+      .expect(200);
+
+    expect(res.body.metas).toEqual([
+      {
+        id: "coffei.webshare:456",
+        name: "C.mkv",
+        poster: "c.jpg",
+        type: "movie",
+      },
+    ]);
     expect(webshare.search).toHaveBeenCalledWith("test", wsToken);
   });
 

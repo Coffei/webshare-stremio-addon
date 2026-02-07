@@ -177,6 +177,12 @@ button:active {
   outline-color: red;
   outline-style: solid;
 }
+
+input[type="checkbox"] {
+  width: 2vh;
+  height: 2vh;
+  vertical-align: middle;
+}
 `;
 
 function landingTemplate(manifest, error, configValues) {
@@ -213,7 +219,7 @@ function landingTemplate(manifest, error, configValues) {
 				</div>
 				`;
       } else if (elem.type === "checkbox") {
-        const isChecked = elem.default === "checked" ? " checked" : "";
+        const isChecked = elem.default === true ? " checked" : "";
         options += `
 				<div class="form-element">
 					<label for="${key}">
