@@ -17,6 +17,9 @@ This addon is submitted to the community addon catalog. To install, just go Addo
 
 Alternative is to follow the link https://20317bf4c6c6-webshare-stremio-addon.baby-beamup.club/ and install from there.
 
+Backup server, in case the official one above does not work, is located at
+https://webshare-stremio-addon-fly.fly.dev. Only use it in case the main does not work.
+
 You need to have valid Webshare.cz credentials and a premium account.
 
 ## Development
