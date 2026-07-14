@@ -4,7 +4,7 @@
   "description": "Simple webshare.cz search and streaming.",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js --dev",
+    "dev": "node --watch src/server.js --dev",
     "test": "jest",
     "format": "prettier . --write",
     "check-formatting": "prettier . --check"
