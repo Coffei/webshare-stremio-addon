@@ -251,6 +251,11 @@ app.get("/getUrl/:ident", async (req, res) => {
     const ident = req.params.ident;
     const streamUrl = await getUrl(ident, req.query.token);
 
+    if (!streamUrl) {
+      res.status(404).send("Unable to resolve Webshare file link");
+      return;
+    }
+
     const now = new Date();
     // Expires 5 hours from now.
     const expiration = new Date(now.getTime() + 5 * 60 * 60 * 1000);
@@ -264,6 +269,7 @@ app.get("/getUrl/:ident", async (req, res) => {
     res.redirect(streamUrl);
   } catch (error) {
     console.error("Error in getUrl: ", error.code, error.message, error.stack);
+    res.status(502).send("Error while resolving Webshare file link");
   }
 });
 

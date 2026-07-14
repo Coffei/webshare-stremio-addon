@@ -64,6 +64,18 @@ describe("GET /getUrl/:ident", () => {
     // Route requires :ident, so /getUrl/ should 404
     const res = await request(server).get(`/getUrl/`).expect(404);
   });
+
+  it("returns 404 when the file link cannot be resolved", async () => {
+    webshare.getUrl.mockResolvedValueOnce(null);
+
+    await request(server).get(`/getUrl/${ident}?token=${token}`).expect(404);
+  });
+
+  it("returns 502 when webshare.getUrl throws", async () => {
+    webshare.getUrl.mockRejectedValueOnce(new Error("fail"));
+
+    await request(server).get(`/getUrl/${ident}?token=${token}`).expect(502);
+  });
 });
 
 describe("POST /configure", () => {
