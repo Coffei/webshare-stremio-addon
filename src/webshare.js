@@ -84,7 +84,6 @@ const login = async (user, saltedPassword) => {
 };
 
 const getById = async (id, token) => {
-  await needle("https://webshare.cz/api/file_info");
   const data = formencode({ ident: id, wst: token });
   const resp = await needle(
     "post",
