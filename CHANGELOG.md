@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1
+
+- Replace `nodeman` with `node --watch` and fix some bugs (thanks to [jholaj](https://github.com/jholaj))
+
 ## 0.8.0
 
 - Add `enableSearch` config flag to toggle direct file search
